@@ -3,14 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Clipsmith — YouTube to Shorts</title>
+<title>ReelCraft AI — Short-form video studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://checkout.razorpay.com/v1/checkout.js" async></script>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0d0e12; --panel: #16181f; --panel-2: #1d2029; --line: #2a2e3a;
-    --text: #eef0f5; --muted: #a9b0c0; --accent: #ffd60a; --accent-ink: #1a1500;
+    --bg: #0b1020; --panel: #111a2b; --panel-2: #192438; --line: #27344a;
+    --text: #eef3fb; --muted: #a4b1c5; --accent: #78a9ff; --accent-ink: #09172d;
     --good: #4ade80; --mid: #fbbf24; --low: #a9b0c0; --bad: #ff8a8a; --ring: #7cc4ff;
     --radius: 14px; color-scheme: dark;
   }
@@ -30,16 +32,44 @@
   a { color: #8cc8ff; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
   .wrap { max-width: 1180px; margin: 0 auto; padding: 0 20px 80px; }
-  header { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; border-bottom: 1px solid var(--line); }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; letter-spacing: -.01em; }
+  .brand-name { display: inline-flex; align-items: center; gap: 7px; }
+  .brand-ai { font: 700 10px/1 var(--f-mono); letter-spacing: .08em; color: var(--accent); border: 1px solid rgba(120,169,255,.4); border-radius: 5px; padding: 4px 5px; }
   .brand i { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); display: grid; place-items: center; }
   .brand i::after { content: ""; border-left: 9px solid var(--accent-ink); border-top: 6px solid transparent; border-bottom: 6px solid transparent; margin-left: 2px; }
   .mode { font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
   .mode b { color: var(--text); font-weight: 600; }
   .mode .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--low); }
   .mode.ai .dot { background: var(--good); }
+  .account-actions { display: flex; align-items: center; gap: 8px; }
+  .account-email { color: var(--muted); font-size: 13px; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .upgrade { min-height: 38px; padding: 0 14px; border: 1px solid rgba(120,169,255,.55); background: rgba(120,169,255,.1); color: var(--text); font-size: 13px; font-weight: 700; }
+  .upgrade:hover { background: rgba(120,169,255,.2); }
+  .pro-locked { opacity: .58; }
+  .pro-tag { display: inline-flex; margin-left: 8px; padding: 2px 6px; border-radius: 5px; background: rgba(120,169,255,.14); color: var(--accent); font: 700 10px/1.5 var(--f-mono); letter-spacing: .04em; }
+  .lock-upgrade { display: block; min-height: 34px; margin-top: 8px; padding: 0 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--accent); font-size: 12px; font-weight: 700; }
+  dialog.pricing { width: min(940px, calc(100vw - 28px)); max-width: none; max-height: 90vh; overflow: auto; padding: 24px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 18px; }
+  dialog.pricing::backdrop { background: rgba(3,8,18,.78); backdrop-filter: blur(5px); }
+  .pricing-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+  .pricing-head h2 { margin:0; font-size:26px; }
+  .billing-toggle { display:flex; gap:4px; background:var(--bg); padding:4px; border:1px solid var(--line); border-radius:10px; }
+  .billing-toggle button { padding:7px 10px; background:transparent; color:var(--muted); font-size:13px; }
+  .billing-toggle button.active { background:var(--accent); color:var(--accent-ink); font-weight:700; }
+  .plan-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(185px,1fr)); gap:12px; margin-top:20px; }
+  .plan-card { padding:16px; border:1px solid var(--line); border-radius:13px; background:var(--bg); }
+  .plan-card.featured { border-color:var(--accent); box-shadow:0 0 0 1px rgba(120,169,255,.2); }
+  .plan-card h3 { margin:0; font-size:18px; }
+  .plan-price { margin:12px 0; font:700 25px/1.1 var(--f-display); }
+  .plan-price small { color:var(--muted); font:400 13px/1.2 var(--f-body); }
+  .plan-card ul { min-height:94px; padding-left:18px; color:var(--muted); font-size:13px; }
+  .plan-card .go { width:100%; min-height:42px; padding:0 10px; font-size:14px; }
+  .dlg-close { min-height:36px; padding:0 10px; border:1px solid var(--line); background:transparent; }
+  @media (max-width:640px) { .account-email { display:none; } .pricing-head { flex-direction:column; } }
 
-  .hero { text-align: center; padding: 34px 0 26px; }
+  .hero { text-align: center; padding: 40px 0 26px; }
+  .hero-kicker { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--accent); font: 700 11px/1 var(--f-mono); letter-spacing: .12em; }
+  .hero-kicker::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px rgba(120,169,255,.7); }
   h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.1; margin: 0 0 12px; letter-spacing: -.03em; }
   h1 em { font-style: normal; color: var(--accent); }
   .hero p { color: var(--muted); margin: 0 auto; max-width: 560px; font-size: 16px; }
@@ -67,7 +97,7 @@
   .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
   .drop { position: relative; display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 10px 14px;
     border: 1.5px dashed #3a3f4d; border-radius: 12px; background: var(--bg); transition: border-color .15s, background .15s; }
-  .drop:hover, .drop.over { border-color: var(--accent); background: #1a1a12; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: #121d30; }
   .drop:focus-within { border-style: solid; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(124,196,255,.35); }
   .drop input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
   .drop svg { flex: none; color: var(--accent); }
@@ -82,7 +112,7 @@
   .check { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 14px; border: 1px solid var(--line);
     border-radius: 10px; background: var(--bg); color: var(--text); font-size: 15px; cursor: pointer; }
   .check:hover { border-color: #5a6072; }
-  .check:has(input:checked) { border-color: rgba(255,214,10,.55); }
+  .check:has(input:checked) { border-color: rgba(120,169,255,.55); }
   .check input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); cursor: pointer; }
   .focus { display: grid; grid-template-columns: 1fr 120px 120px; gap: 14px; }
   .hint { font-size: 13.5px; color: var(--muted); margin: 8px 0 0; }
@@ -128,26 +158,8 @@
   .empty strong { display: block; color: var(--text); font-size: 17px; margin-bottom: 4px; }
   @media (max-width: 560px) { .row { flex-direction: column; } .go { padding: 13px; } }
   .hdr-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-  .ytbadge { font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; text-decoration: none; background: transparent; }
-  .ytbadge b { color: var(--text); font-weight: 600; }
-  a.ytbadge:hover, button.ytbadge:hover { color: var(--text); border-color: var(--muted); }
-  .ytbadge.on { border-color: #5b2a2a; }
-  .ytbadge .ytdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #ff3b30; margin-right: 6px; }
-  .ytbadge { display: inline-flex; align-items: center; min-height: 36px; }
-  .post { width: 100%; min-height: 44px; background: transparent; color: var(--text); border: 1px solid #3a3f4d; border-radius: 10px; font-size: 14.5px; font-weight: 600; }
-  .post:hover { border-color: #ff3b30; }
-  .post:disabled { opacity: .5; cursor: default; }
-  .ytstat { font-size: 13.5px; color: var(--muted); }
-  .ytstat:empty { display: none; }
-  .ytstat.err { color: var(--bad); }
-  #ytmsg { max-width: 820px; margin: 16px auto 0; }
-  .banner { border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 12px 14px; font-size: 15px; }
-  .banner.err { border-color: #7a3434; background: #241517; color: #ffc4c4; }
   dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; padding: 0; width: min(560px, calc(100vw - 32px)); }
   dialog::backdrop { background: rgba(0,0,0,.6); }
-  .dlg { padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 12px; }
-  .dlg h2 { margin: 0; font-size: 19px; }
-  .dlg h2 .sub { font-size: 14px; font-weight: 400; color: var(--muted); }
   .dlg label.lbl { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
   .dlg input[type=datetime-local] { width: 100%; min-height: 46px; background: var(--bg); color: var(--text); border: 1px solid #3a3f4d; border-radius: 10px; padding: 9px 12px; }
   .dlg textarea { min-height: 96px; resize: vertical; }
@@ -261,27 +273,6 @@
   @media (prefers-reduced-motion: reduce) { .spin { animation: none !important; border-color: var(--accent); } }
   @media (max-width: 560px) { .stages { grid-template-columns: 1fr; gap: 10px; } }
 
-  /* ---------- YouTube upload box under each clip ---------- */
-  .ytstat:empty { display: none; }
-  .yt-box { border-radius: 12px; padding: 12px 14px; font-size: 14px; border: 1px solid var(--line); background: var(--bg); }
-  .yt-box.busy { border-color: #3a3f4d; }
-  .yt-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-  .yt-title { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
-  .yt-pct { font: 700 15px/1 var(--f-mono); color: var(--accent); }
-  .yt-hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
-  .yt-box.ok, .yt-box.err { display: flex; gap: 10px; align-items: flex-start; }
-  .yt-box.ok { border-color: rgba(74,222,128,.4); background: #0f1d15; }
-  .yt-box.ok > svg { color: var(--good); margin-top: 2px; flex: none; }
-  .yt-box.err { border-color: #7a3434; background: #241517; color: #ffc4c4; }
-  .yt-box.err > svg { color: var(--bad); margin-top: 2px; flex: none; }
-  .yt-box b { display: block; color: var(--text); font-size: 15px; }
-  .yt-box a { color: #8cc8ff; font-weight: 600; }
-
-  /* Once posted, the post button steps back to a small secondary action. */
-  .info .post.again { min-height: 40px; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: var(--muted); border-color: var(--line); background: transparent; }
-  .info .post.again:hover { color: var(--text); border-color: #5a6072; }
-  .info .post.again svg { width: 15px; height: 15px; opacity: .8; }
-
   /* ---------- ⋯ menu ---------- */
   .info .actions .more { flex: none; width: 44px; padding: 0; margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
     background: transparent; color: var(--muted); border: 1px solid #3a3f4d; }
@@ -300,55 +291,23 @@
   .menu-sep { height: 1px; background: #3a3f4d; margin: 6px 4px; }
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60; max-width: calc(100vw - 32px);
     background: var(--text); color: var(--bg); font-weight: 600; font-size: 15px; padding: 12px 18px; border-radius: 12px; box-shadow: 0 12px 30px -10px rgba(0,0,0,.6); }
-  @media (max-width: 640px) { .info .actions .more { flex: 0 0 44px; } .info .actions .dl, .info .actions .post { flex: 1 1 0; } }
+  @media (max-width: 640px) { .info .actions .more { flex: 0 0 44px; } .info .actions .dl { flex: 1 1 0; } }
 
-  /* ---------- Posted clips fold into one row ---------- */
   .compact { display: none; }
   .clip.folded { padding: 8px 10px 8px 14px; }
   .clip.folded > .vid, .clip.folded > .info { display: none; }
   .clip.folded > .compact { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; flex-wrap: wrap; }
-  .okmark { width: 24px; height: 24px; border-radius: 50%; background: var(--good); color: #0b1a10; display: grid; place-items: center; flex: none; }
-  .okmark svg { width: 14px; height: 14px; }
   .ctitle { flex: 1 1 200px; min-width: 0; font-weight: 600; font-size: 15.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cstat { color: var(--muted); font-size: 14px; white-space: nowrap; }
-  .cstat a { color: #8cc8ff; font-weight: 600; }
   .iconbtn { flex: none; width: 44px; height: 44px; display: inline-grid; place-items: center; border-radius: 10px; background: transparent;
     color: var(--muted); border: 1px solid #3a3f4d; cursor: pointer; }
   .iconbtn:hover, .iconbtn[aria-haspopup][aria-expanded="true"] { color: var(--text); background: var(--panel-2); border-color: #5a6072; }
   .collapse { display: none; margin-left: 4px; }
-  .clip.posted .collapse { display: inline-grid; }
   @media (max-width: 640px) { .cstat { order: 5; flex-basis: 100%; padding-left: 34px; white-space: normal; } }
+  @media (max-width: 560px) { .toast { bottom: auto; top: 16px; } }
 
-  /* ---------- Upload tray ---------- */
-  .tray { position: fixed; right: 20px; bottom: 20px; z-index: 40; width: min(380px, calc(100vw - 32px)); background: var(--panel);
-    border: 1px solid #3a3f4d; border-radius: 16px; box-shadow: 0 24px 60px -16px rgba(0,0,0,.8); overflow: hidden; }
-  .tray-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 16px; background: var(--panel-2); }
-  .tray-title { flex: 1; margin: 0; font-size: 15px; font-weight: 700; }
-  .tray-head .iconbtn { width: 40px; height: 40px; border-color: transparent; }
-  .tray-head .iconbtn svg { transition: transform .2s; }
-  .tray.min .tray-list { display: none; }
-  .tray.min #trayToggle svg { transform: rotate(180deg); }
-  .tray-list { list-style: none; margin: 0; padding: 6px; max-height: 300px; overflow-y: auto; }
-  .t-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border-radius: 10px; font-size: 14px; }
-  .t-item + .t-item { border-top: 1px solid var(--line); }
-  .t-item > div { flex: 1; min-width: 0; }
-  .t-item > svg, .t-item > .spin { flex: none; margin-top: 2px; }
-  .t-item.ok > svg { color: var(--good); }
-  .t-item.err > svg { color: var(--bad); }
-  .t-err { display: block; color: #ffc4c4; }
-  .t-name { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .t-rank { font-family: var(--f-mono); color: var(--accent); }
-  .t-item a { color: #8cc8ff; font-weight: 600; }
-  .t-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
-  .t-row .bar { flex: 1; height: 6px; }
-  .t-pct { font: 700 13px/1 var(--f-mono); color: var(--accent); min-width: 52px; text-align: right; }
-  .wrap { padding-bottom: 140px; } /* room so the tray never covers the last clip */
-  @media (max-width: 560px) { .tray { right: 16px; bottom: 16px; } .toast { bottom: auto; top: 16px; } }
-
-  /* Every clip can fold now; only posted ones start folded. */
+  /* Every clip can be folded manually. */
   .collapse { display: inline-grid !important; }
-  .clip:not(.posted) .okmark, .clip:not(.posted) .okmark-txt { display: none; }
-  .c-err { color: var(--bad); font-weight: 600; }
 
   /* Fill the card: video and details are the same height, buttons sit on the bottom edge. */
   .clip { align-items: stretch; }
@@ -371,7 +330,7 @@
   .job-main { flex: 1 1 260px; min-width: 0; }
   .jobhead h3 { font-family: var(--f-display); font-size: 17.5px; line-height: 1.3; margin: 0 0 6px; overflow-wrap: anywhere; }
   .badge { display: inline-block; vertical-align: 2px; margin-left: 6px; padding: 3px 8px; border-radius: 999px; font: 600 12px/1.2 var(--f-body); }
-  .badge.run { background: rgba(255,214,10,.14); color: var(--accent); }
+  .badge.run { background: rgba(120,169,255,.14); color: var(--accent); }
   .badge.bad { background: #3a1c1f; color: #ffc4c4; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chips .chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; background: var(--panel-2); color: var(--muted); font-size: 12.5px; }
@@ -439,17 +398,24 @@
 <a class="skip" href="#jobs">Skip to your clips</a>
 <div class="wrap">
   <header>
-    <div class="brand"><i aria-hidden="true"></i>Clipsmith</div>
+    <div class="brand"><i aria-hidden="true"></i><span class="brand-name">ReelCraft <span class="brand-ai">AI</span></span></div>
     <div class="hdr-right">
-      <span id="yt" class="hdr-right"></span>
+      <div class="account-actions" id="account-actions">
+        <button class="upgrade" id="upgrade" type="button">Upgrade to Pro</button>
+        <span class="account-email" id="account-email"></span>
+        <button class="ghost" id="signin" type="button">Sign in with Google</button>
+        <a class="ghost" id="admin-link" href="/admin" hidden>Admin</a>
+        <button class="ghost" id="signout" type="button" hidden>Sign out</button>
+      </div>
       <div class="mode" id="mode" role="status"><span class="dot" aria-hidden="true"></span>Checking…</div>
     </div>
   </header>
 
   <main>
   <div class="hero">
-    <h1>One long video in.<br><em>A batch of Shorts</em> out.</h1>
-    <p>Paste a YouTube link. The best one-minute moments come back cut, reframed to vertical and captioned, ranked by how likely they are to hold a viewer.</p>
+    <div class="hero-kicker">AI-POWERED VIDEO WORKSPACE</div>
+    <h1>Turn long videos into<br><em>polished, ready-to-share clips.</em></h1>
+    <p>Create short-form videos with smart moment selection, clean framing and animated captions—all from one simple workspace.</p>
   </div>
 
   <form id="form" novalidate aria-label="Make clips">
@@ -469,16 +435,17 @@
     <div class="sect">
     <h2 class="sect-h">Clip settings</h2>
     <div class="settings">
-      <fieldset class="setting">
+      <fieldset class="setting" data-feature="clip-count">
         <legend>Number of clips</legend>
         <div class="seg">
+          <label><input type="radio" name="count" value="1" checked><span>1</span></label>
           <label><input type="radio" name="count" value="3"><span>3</span></label>
           <label><input type="radio" name="count" value="5" checked><span>5</span></label>
           <label><input type="radio" name="count" value="8"><span>8</span></label>
           <label><input type="radio" name="count" value="10"><span>10</span></label>
         </div>
       </fieldset>
-      <fieldset class="setting">
+      <fieldset class="setting" data-feature="clip-length">
         <legend>Clip length <span class="sr-only">in seconds</span></legend>
         <div class="seg">
           <label><input type="radio" name="len" value="15-30"><span>15–30s</span></label>
@@ -487,7 +454,7 @@
           <label><input type="radio" name="len" value="60-90"><span>60–90s</span></label>
         </div>
       </fieldset>
-      <fieldset class="setting wide">
+      <fieldset class="setting wide" data-feature="aspect">
         <legend>Aspect ratio</legend>
         <div class="seg seg-icons">
           <label><input type="radio" name="aspect" value="9:16" checked><span><i class="ar" style="width:11px;height:19px" aria-hidden="true"></i><b>9:16</b><small>Shorts, TikTok, Reels</small></span></label>
@@ -495,11 +462,11 @@
           <label><input type="radio" name="aspect" value="16:9"><span><i class="ar" style="width:22px;height:12px" aria-hidden="true"></i><b>16:9</b><small>Landscape</small></span></label>
         </div>
       </fieldset>
-      <fieldset class="setting wide">
+      <fieldset class="setting wide" data-feature="caption-style">
         <legend>Caption style <span class="legend-note">preview shows how captions look on the video</span></legend>
         <div class="capstyles" id="style"></div>
       </fieldset>
-      <div class="setting">
+      <div class="setting" data-feature="framing">
         <label for="layout">Framing</label>
         <select id="layout">
           <option value="auto" selected>Auto</option>
@@ -509,13 +476,13 @@
         </select>
       </div>
     </div>
-    <div class="switches">
+    <div class="switches" data-feature="advanced-switches">
       <label class="switch"><span><b>Hook text at the start</b><small>A short line on screen in the first seconds</small></span><input type="checkbox" role="switch" id="hook" checked></label>
       <label class="switch"><span><b>Remove pauses and "uh"/"um"</b><small>Tighter pacing, same words</small></span><input type="checkbox" role="switch" id="trim" checked></label>
     </div>
     </div>
 
-    <div class="sect">
+    <div class="sect" data-feature="focus">
     <h2 class="sect-h">Focus <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></h2>
     <div class="focus">
       <div><label for="prompt">What should the clips be about?</label>
@@ -528,47 +495,25 @@
     <p class="formerr" id="formerr" role="alert"></p>
   </form>
 
-  <div id="ytmsg" role="status"></div>
   <div id="jobs" tabindex="-1" aria-busy="false"></div>
   <div id="announce" class="sr-only" role="status" aria-live="polite"></div>
   <div id="toast" class="toast" hidden></div>
-  <section id="tray" class="tray" aria-labelledby="trayTitle" hidden>
-    <div class="tray-head">
-      <h2 id="trayTitle" class="tray-title">Uploads</h2>
-      <button class="iconbtn" id="trayToggle" type="button" aria-expanded="true" aria-controls="trayList" aria-label="Minimize uploads">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
-      <button class="iconbtn" id="trayClose" type="button" aria-label="Close uploads" hidden>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
-    </div>
-    <ul class="tray-list" id="trayList"></ul>
-  </section>
   </main>
 </div>
 
-<dialog id="ytdlg" aria-labelledby="ytdlgTitle">
-  <form class="dlg" id="ytform" method="dialog">
-    <h2 id="ytdlgTitle">Post to YouTube <span class="sub" id="ytchan"></span></h2>
-    <div><label class="lbl" for="ytTitle">Title <span class="count" id="ytCount">0/100</span></label>
-      <input type="text" id="ytTitle" maxlength="100" required></div>
-    <div><label class="lbl" for="ytDesc">Description</label><textarea id="ytDesc" maxlength="4500"></textarea></div>
-    <div><label class="lbl" for="ytTags">Hashtags</label><input type="text" id="ytTags" placeholder="#shorts #minecraft" aria-describedby="ytTagsHint">
-      <p class="hint" id="ytTagsHint">Separate them with spaces.</p></div>
-    <div class="two">
-      <div><label class="lbl" for="ytPrivacy">Visibility</label>
-        <select id="ytPrivacy"><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></div>
-      <div><label class="lbl" for="ytWhen">When</label>
-        <select id="ytWhen"><option value="now">Post now</option><option value="later">Schedule</option></select></div>
+<dialog id="pricing" class="pricing" aria-labelledby="pricing-title">
+  <div class="pricing-head">
+    <div><h2 id="pricing-title">Choose your plan</h2><p class="hint">Unlock more clips, longer videos and every editing option.</p></div>
+    <div class="row" style="align-items:center">
+      <div class="billing-toggle" role="group" aria-label="Billing period">
+        <button type="button" data-billing="monthly" class="active">Monthly</button>
+        <button type="button" data-billing="yearly">Yearly</button>
+      </div>
+      <button class="dlg-close" type="button" data-close-pricing aria-label="Close pricing">Close</button>
     </div>
-    <div id="ytLaterBox" hidden><label class="lbl" for="ytAt">Publish at (your local time)</label><input type="datetime-local" id="ytAt" aria-describedby="ytAtHint">
-      <p class="hint" id="ytAtHint">YouTube makes it public at this time by itself; your computer doesn't need to be on. It stays private until then.</p></div>
-    <fieldset><legend>Audience (YouTube requires an answer)</legend>
-      <label class="opt"><input type="radio" name="ytKids" value="no" required> No, it's not made for kids</label>
-      <label class="opt"><input type="radio" name="ytKids" value="yes"> Yes, it's made for kids</label></fieldset>
-    <label class="opt"><input type="checkbox" id="ytNotify" checked> Notify subscribers</label>
-    <label class="opt" id="ytLinkRow"><input type="checkbox" id="ytLink"> Add the full video link to the description</label>
-    <div class="err" id="yterr" role="alert"></div>
-    <div class="btns"><button type="button" class="ghost" id="ytCancel">Cancel</button><button type="submit" class="go" id="ytSubmit">Post</button></div>
-  </form>
+  </div>
+  <div class="plan-grid" id="plan-grid"></div>
+  <p class="hint">Payments are processed securely by Razorpay. Annual plans renew manually. The server-wide video limit currently applies to every plan; Render Free defaults to 5 minutes and can be raised to 10 minutes in Admin.</p>
 </dialog>
 
 <script>
@@ -578,6 +523,9 @@ const radio = (name) => document.querySelector(`input[name="${name}"]:checked`).
 const jobsEl = $("#jobs");
 let jobs = [];
 let timer = null;
+let account = null;
+let appStatus = {};
+let billingPeriod = "monthly";
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
@@ -589,6 +537,7 @@ async function api(path, opts) {
 async function init() {
   try {
     const st = await api("/api/status");
+    appStatus = st;
     const mode = $("#mode");
     mode.classList.toggle("ai", !!st.ai);
     mode.innerHTML = st.ai
@@ -599,10 +548,161 @@ async function init() {
     }
     renderCaptionStyles(st.styles, st.style_looks || {});
   } catch (e) { $("#mode").textContent = "Server not reachable"; }
-  showConnectResult();
-  await loadYouTube();
+  await loadAccount();
+  renderPlans();
   await refresh();
 }
+
+async function loadAccount() {
+  try { account = await api("/api/auth/me"); } catch { account = null; }
+  $("#signin").hidden = !!account;
+  $("#signout").hidden = !account;
+  $("#account-email").textContent = account ? `${account.plan_name} · ${account.email}` : "";
+  $("#admin-link").hidden = !account || account.role !== "admin";
+  applyPlanAccess();
+  return account;
+}
+
+function signIn() {
+  if (!appStatus.google_client_id) {
+    $("#formerr").textContent = "Google sign-in is not configured. Add GOOGLE_CLIENT_ID to the deployment settings.";
+    return;
+  }
+  if (!window.google?.accounts?.id) {
+    $("#formerr").textContent = "Google sign-in is still loading. Please try again.";
+    return;
+  }
+  google.accounts.id.initialize({
+    client_id: appStatus.google_client_id,
+    callback: async ({ credential }) => {
+      try {
+        account = await api("/api/auth/google", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ credential }),
+        });
+        await loadAccount();
+        await refresh();
+      } catch (err) { $("#formerr").textContent = err.message; }
+    },
+  });
+  google.accounts.id.prompt();
+}
+
+function applyPlanAccess() {
+  const isFree = !!account && account.plan === "free";
+  const locked = !account || isFree;
+  const lockFeature = (el, shouldLock) => {
+    el.classList.toggle("pro-locked", shouldLock);
+    el.querySelectorAll("input,select,textarea").forEach((control) => {
+      control.disabled = shouldLock;
+    });
+    let upsell = el.querySelector(":scope > .lock-upgrade");
+    if (shouldLock && !upsell) {
+      upsell = document.createElement("button");
+      upsell.type = "button";
+      upsell.className = "lock-upgrade";
+      upsell.textContent = "PRO  ·  Unlock this feature";
+      upsell.addEventListener("click", () => $("#pricing").showModal());
+      el.appendChild(upsell);
+    } else if (!shouldLock) upsell?.remove();
+  };
+  for (const feature of ["clip-count", "caption-style", "advanced-switches", "focus"]) {
+    const el = document.querySelector(`[data-feature="${feature}"]`);
+    if (el) lockFeature(el, locked);
+  }
+  const lengths = [...document.querySelectorAll('input[name="len"]')];
+  lengths.forEach((input) => { input.disabled = isFree && input.value !== "15-30"; });
+  const aspects = [...document.querySelectorAll('input[name="aspect"]')];
+  aspects.forEach((input) => { input.disabled = isFree && input.value !== "9:16"; });
+  const count = document.querySelector('input[name="count"][value="1"]');
+  if (isFree && count) count.checked = true;
+  const length = document.querySelector('input[name="len"][value="15-30"]');
+  if (isFree && length) length.checked = true;
+  const aspect = document.querySelector('input[name="aspect"][value="9:16"]');
+  if (isFree && aspect) aspect.checked = true;
+  const framing = document.querySelector('[data-feature="framing"]');
+  if (framing) {
+    const select = framing.querySelector("select");
+    [...select.options].forEach((option) => { option.disabled = isFree && option.value !== "auto"; });
+    if (isFree) select.value = "auto";
+    lockFeature(framing, !account);
+    [...select.options].forEach((option) => { option.disabled = isFree && option.value !== "auto"; });
+  }
+  for (const feature of ["clip-length", "aspect"]) {
+    const el = document.querySelector(`[data-feature="${feature}"]`);
+    const shouldOfferUpgrade = locked && el && [...el.querySelectorAll("input")].some((input) => input.disabled);
+    let upsell = el?.querySelector(":scope > .lock-upgrade");
+    if (shouldOfferUpgrade && !upsell) {
+      upsell = document.createElement("button");
+      upsell.type = "button";
+      upsell.className = "lock-upgrade";
+      upsell.textContent = "PRO  ·  Unlock all options";
+      upsell.addEventListener("click", () => $("#pricing").showModal());
+      el.appendChild(upsell);
+    } else if (!shouldOfferUpgrade) upsell?.remove();
+  }
+  $("#account-email").title = account ? `Current plan: ${account.plan_name}. ${account.quota === null ? "Unlimited" : Math.max(0, account.quota - account.used)} clips remaining.` : "";
+}
+
+function renderPlans() {
+  const plans = appStatus.plans || {};
+  $("#plan-grid").innerHTML = ["free", "normal", "premium", "gold"].map((key) => {
+    const plan = plans[key];
+    if (!plan) return "";
+    const price = plan[billingPeriod];
+    const current = account?.plan === key;
+    const clipLimit = plan.quota === null ? "Unlimited clips/month" :
+      `${plan.quota} clip${plan.quota === 1 ? "" : "s"}/${plan.period}`;
+    return `<article class="plan-card${key === "premium" ? " featured" : ""}">
+      <h3>${esc(plan.name)}${current ? ' <span class="pro-tag">CURRENT</span>' : ""}</h3>
+      <div class="plan-price">₹${price}<small> / ${billingPeriod === "monthly" ? "month" : "year"}</small></div>
+      <ul><li>${esc(clipLimit)}</li><li>Up to ${plan.minutes}-minute source video</li><li>${key === "free" ? "Basic clip settings" : "All editing options unlocked"}</li></ul>
+      <button class="go" type="button" data-buy-plan="${key}" ${current || key === "free" ? "disabled" : ""}>${current ? "Current plan" : key === "free" ? "Free plan" : "Choose plan"}</button>
+    </article>`;
+  }).join("");
+}
+
+$("#signin").addEventListener("click", signIn);
+$("#upgrade").addEventListener("click", () => { renderPlans(); $("#pricing").showModal(); });
+$("#signout").addEventListener("click", async () => {
+  await api("/api/auth/logout", { method: "POST" });
+  account = null;
+  jobs = [];
+  render();
+  await loadAccount();
+});
+document.querySelectorAll("[data-close-pricing]").forEach((button) => button.addEventListener("click", () => $("#pricing").close()));
+document.querySelectorAll("[data-billing]").forEach((button) => button.addEventListener("click", () => {
+  billingPeriod = button.dataset.billing;
+  document.querySelectorAll("[data-billing]").forEach((item) => item.classList.toggle("active", item === button));
+  renderPlans();
+}));
+$("#plan-grid").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-buy-plan]");
+  if (!button) return;
+  if (!account) { $("#pricing").close(); signIn(); return; }
+  if (!window.Razorpay) { $("#formerr").textContent = "Razorpay Checkout is loading. Please try again."; return; }
+  button.disabled = true;
+  try {
+    const order = await api("/api/payments/order", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: button.dataset.buyPlan, billing: billingPeriod }),
+    });
+    const checkout = new Razorpay({
+      key: order.key_id, order_id: order.order_id, amount: order.amount, currency: order.currency,
+      name: "ReelCraft AI", description: `${button.dataset.buyPlan} plan · ${billingPeriod}`,
+      handler: async (payment) => {
+        try {
+          await api("/api/payments/verify", {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payment),
+          });
+          await loadAccount(); renderPlans(); $("#pricing").close();
+        } catch (err) { $("#formerr").textContent = err.message; }
+      },
+    });
+    checkout.open();
+  } catch (err) { $("#formerr").textContent = err.message; }
+  finally { button.disabled = false; }
+});
 
 // ---------- caption style previews ----------
 const CAPTION_FONTS = {  // files served from /fonts, the same ones ffmpeg burns in
@@ -624,44 +724,10 @@ function renderCaptionStyles(labels, looks) {
     // bundled fonts load as "cap <name>"; system fonts (Arial, Arial Black) are used directly
     const font = look.font ? `"cap ${look.font}", "${look.font}", ` : "";
     return `<label><input type="radio" name="style" value="${esc(k)}" ${k === pick ? "checked" : ""}>
-      <span class="cs"><span class="frame" aria-hidden="true"><span class="txt${look.reveal ? " reveal" : ""}" style="font-size:${Math.min(22, 5.6 / (look.width || 0.3)).toFixed(1)}px; font-family:${esc(font)}sans-serif; --hl:${esc(look.active || "#ffd60a")}">${words.map((w) => `<span>${w}</span>`).join("")}</span></span>
+      <span class="cs"><span class="frame" aria-hidden="true"><span class="txt${look.reveal ? " reveal" : ""}" style="font-size:${Math.min(22, 5.6 / (look.width || 0.3)).toFixed(1)}px; font-family:${esc(font)}sans-serif; --hl:${esc(look.active || "#78a9ff")}">${words.map((w) => `<span>${w}</span>`).join("")}</span></span>
       <span class="name">${esc(labels[k])}${look.font ? `<small>${esc(look.font)}</small>` : ""}</span></span></label>`;
   }).join("");
   $("#style").addEventListener("change", (e) => { try { localStorage.setItem("captionStyle", e.target.value); } catch {} });
-}
-
-// ---------- YouTube ----------
-let yt = { configured: false, connected: false, channel: null };
-const SETUP_DOC = "https://github.com/AbdulSamad94/clipsmith/blob/main/docs/youtube-setup.md";
-
-async function loadYouTube() {
-  try { yt = await api("/api/youtube"); } catch { return; }
-  const el = $("#yt");
-  if (!yt.configured) {
-    el.innerHTML = `<a class="ytbadge" href="${SETUP_DOC}" target="_blank" rel="noopener"><span class="ytdot"></span>Set up YouTube posting</a>`;
-  } else if (!yt.connected) {
-    el.innerHTML = `<a class="ytbadge" href="/api/youtube/connect"><span class="ytdot"></span>Connect YouTube</a>`;
-  } else {
-    const name = yt.channel ? yt.channel.title : "connected";
-    el.innerHTML = `<span class="ytbadge on"><span class="ytdot"></span>YouTube: <b>${esc(name)}</b></span>
-      <button class="ytbadge" id="ytOff" type="button">Disconnect</button>`;
-    $("#ytOff").onclick = async () => {
-      if (!confirm("Disconnect YouTube? Clipsmith will no longer be able to post to your channel.")) return;
-      await api("/api/youtube/disconnect", { method: "POST" }).catch((e) => alert(e.message));
-      await loadYouTube();
-    };
-  }
-}
-
-function showConnectResult() {
-  const p = new URLSearchParams(location.search);
-  const r = p.get("youtube");
-  if (!r) return;
-  const why = p.get("reason");
-  $("#ytmsg").innerHTML = r === "connected"
-    ? `<div class="banner">YouTube connected. Use "Post to YouTube" on any clip.</div>`
-    : `<div class="banner err">YouTube wasn't connected${why === "access_denied" ? " (permission was declined)" : why === "expired" ? " (the sign-in link expired, try again)" : ""}.</div>`;
-  history.replaceState(null, "", location.pathname);
 }
 
 // One polite live region for the whole page. Only state changes are announced, never every percent.
@@ -672,109 +738,21 @@ function announce(msg) {
 }
 
 const ICON_CHECK = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`;
-const ICON_ALERT = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></svg>`;
-const ICON_CLOCK = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
-
-// The YouTube box under a clip: waiting → uploading (with a bar) → posted / scheduled, or failed.
-function ytStatusHtml(s) {
-  if (!s) return "";
-  if (s.status === "queued" || s.status === "uploading") {
-    const p = s.status === "uploading" ? (s.progress || 0) : 0;
-    const label = s.status === "queued" ? "Getting ready to upload" : p >= 100 ? "Finishing up on YouTube" : "Uploading to YouTube";
-    return `<div class="yt-box busy">
-      <div class="yt-row"><span class="yt-title"><span class="spin" aria-hidden="true"></span><span class="yt-label">${label}</span></span><span class="yt-pct">${p}%</span></div>
-      <div class="bar" role="progressbar" aria-label="YouTube upload" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}"><div style="width:${p}%"></div></div>
-      <div class="yt-hint">Keep Clipsmith open until this finishes. You can keep using the app.</div></div>`;
-  }
-  if (s.status === "error") {
-    return `<div class="yt-box err">${ICON_ALERT}<div><b>Couldn't post to YouTube</b><div>${esc(s.error)}</div></div></div>`;
-  }
-  if (s.status === "done") {
-    const link = `<a href="${esc(s.url)}" target="_blank" rel="noopener">Open on YouTube<span class="sr-only"> (opens in a new tab)</span> ↗</a>`;
-    if (s.scheduled_for) {
-      return `<div class="yt-box ok">${ICON_CLOCK}<div><b>Scheduled on YouTube</b><div>Goes public ${esc(new Date(s.scheduled_for).toLocaleString())} · ${link}</div></div></div>`;
-    }
-    const vis = s.privacy && s.privacy !== "public" ? ` as ${esc(s.privacy)}` : "";
-    return `<div class="yt-box ok">${ICON_CHECK}<div><b>Posted to YouTube${vis}</b><div>${link}</div></div></div>`;
-  }
-  return "";
-}
-
-const ytBusy = (c) => c.youtube && (c.youtube.status === "queued" || c.youtube.status === "uploading");
-const ytState = (c) => (c.youtube ? c.youtube.status : "none");
-
-// The post button changes with the upload: big "Post to YouTube" → hidden while uploading →
-// small "Post again" once it's up, or "Try again" after a failure.
-function postButtonState(btn, c) {
-  const st = ytState(c);
-  // Once posted, "Post again" lives in the ⋯ menu instead of on the card.
-  btn.hidden = st === "queued" || st === "uploading" || st === "done";
-  btn.classList.toggle("again", st === "done" || st === "error");
-  btn.querySelector(".post-txt").textContent = st === "done" ? "Post again" : st === "error" ? "Try again" : "Post to YouTube";
-}
-
-function updateYouTubeStatus() {
-  for (const j of jobs) {
-    (j.clips || []).forEach((c, i) => {
-      const st = jobsEl.querySelector(`[data-ytstat="${j.id}:${i}"]`);
-      if (st) {
-        const state = ytState(c);
-        if (st.dataset.state === state && state === "uploading") {
-          // Same state: only move the bar, so nothing flickers.
-          const p = c.youtube.progress || 0;
-          st.querySelector(".bar > div").style.width = p + "%";
-          st.querySelector(".bar").setAttribute("aria-valuenow", p);
-          st.querySelector(".yt-pct").textContent = p + "%";
-          if (p >= 100) st.querySelector(".yt-label").textContent = "Finishing up on YouTube";
-        } else if (st.dataset.state !== state) {
-          const first = st.dataset.state === undefined;
-          st.innerHTML = ytStatusHtml(c.youtube);
-          st.dataset.state = state;
-          if (!first) {
-            const n = `Clip ${i + 1}`;
-            if (state === "uploading") announce(`${n}: uploading to YouTube.`);
-            if (state === "done") announce(`${n}: ${c.youtube.scheduled_for ? "scheduled on YouTube" : "posted to YouTube"}.`);
-            if (state === "error") announce(`${n}: couldn't post to YouTube. ${c.youtube.error || ""}`);
-          }
-        }
-      }
-      const btn = jobsEl.querySelector(`[data-post="${j.id}:${i}"]`);
-      if (btn) postButtonState(btn, c);
-      applyFold(j.id, i, c);
-    });
-    const pc = jobsEl.querySelector(`[data-posted="${j.id}"]`);
-    if (pc) pc.textContent = postedCount(j);
-  }
-  renderTray();
-}
-
-// ---------- Posted clips fold into one row ----------
-// A clip folds by itself once it's on YouTube. Opening it again is remembered for this visit.
-// What the viewer chose for each clip (true = folded). Clips they haven't touched
-// follow the default: posted ones folded, the rest open.
+// A user's manual compact/open choice persists while this page is active.
 const foldPref = new Map();
-function applyFold(jobId, i, c) {
+function applyFold(jobId, i) {
   const key = `${jobId}:${i}`;
   const li = jobsEl.querySelector(`[data-clip="${key}"]`);
   if (!li) return;
-  const posted = ytState(c) === "done";
-  const folded = foldPref.has(key) ? foldPref.get(key) : posted;
-  li.classList.toggle("posted", posted);
+  const folded = foldPref.get(key) || false;
   if (li.classList.contains("folded") !== folded) {
     li.classList.toggle("folded", folded);
     if (folded) li.querySelector("video")?.pause();
   }
   const cs = li.querySelector("[data-cstat]");
-  if (cs) {
-    const s = c.youtube || {};
-    const st = ytState(c);
-    const html = st === "done"
-      ? `${s.scheduled_for ? `Scheduled ${esc(new Date(s.scheduled_for).toLocaleDateString())}` : "Posted"} · <a href="${esc(s.url)}" target="_blank" rel="noopener">Open on YouTube<span class="sr-only"> (opens in a new tab)</span> ↗</a>`
-      : st === "queued" || st === "uploading" ? `Uploading to YouTube…`
-      : st === "error" ? `<span class="c-err">Upload failed</span>`
-      : `${Math.round(c.length)}s · score ${Math.round(+c.score || 0)}`;
-    if (cs.innerHTML !== html) cs.innerHTML = html;
-  }
+  const job = jobs.find((item) => item.id === jobId);
+  const clip = job?.clips[i];
+  if (cs && clip) cs.textContent = `${Math.round(clip.length)}s · score ${Math.round(+clip.score || 0)}`;
 }
 
 function toggleFold(key) {
@@ -784,157 +762,17 @@ function toggleFold(key) {
   if (!job || !li) return;
   const nowFolded = !li.classList.contains("folded");
   foldPref.set(key, nowFolded);
-  applyFold(jobId, +i, job.clips[+i]);
+  applyFold(jobId, +i);
   // Keep focus on the matching button in the view that is now showing.
   li.querySelector(nowFolded ? ".compact [data-expand]" : ".collapse").focus();
 }
-
-// ---------- Upload tray (bottom-right) ----------
-// Lists every upload started this visit. Finished ones stay until the tray is closed.
-const trayKeys = new Set();
-let trayOpen = true;
-function renderTray() {
-  for (const j of jobs) (j.clips || []).forEach((c, i) => { if (ytBusy(c)) trayKeys.add(`${j.id}:${i}`); });
-  const items = [];
-  for (const key of trayKeys) {
-    const [jobId, i] = key.split(":");
-    const job = jobs.find((j) => j.id === jobId);
-    const c = job && job.clips[+i];
-    if (!c || !c.youtube) { trayKeys.delete(key); continue; }
-    items.push({ key, i: +i, c, s: c.youtube });
-  }
-  const tray = $("#tray");
-  if (!items.length) { tray.hidden = true; return; }
-  tray.hidden = false;
-  const busy = items.filter((x) => x.s.status === "queued" || x.s.status === "uploading");
-  const failed = items.filter((x) => x.s.status === "error").length;
-  const avg = busy.length ? Math.round(busy.reduce((a, x) => a + (x.s.progress || 0), 0) / busy.length) : 100;
-  $("#trayTitle").textContent = busy.length
-    ? `Uploading ${busy.length} clip${busy.length > 1 ? "s" : ""} to YouTube · ${avg}%`
-    : failed ? `${failed} upload${failed > 1 ? "s" : ""} failed` : `${items.length} clip${items.length > 1 ? "s" : ""} posted to YouTube`;
-  $("#trayClose").hidden = busy.length > 0; // can't dismiss while something is still uploading
-  const sig = items.map((x) => x.key + x.s.status).join("|");
-  const list = $("#trayList");
-  if (list.dataset.sig !== sig) {
-    list.dataset.sig = sig;
-    list.innerHTML = items.map(({ key, i, c, s }) => {
-      const name = `<span class="t-name"><span class="t-rank">#${i + 1}</span> ${esc(c.title)}</span>`;
-      if (s.status === "done") return `<li class="t-item ok">${ICON_CHECK}<div>${name}<a href="${esc(s.url)}" target="_blank" rel="noopener">${s.scheduled_for ? "Scheduled" : "Posted"} · Open ↗<span class="sr-only"> (opens in a new tab)</span></a></div></li>`;
-      if (s.status === "error") return `<li class="t-item err">${ICON_ALERT}<div>${name}<span class="t-err">${esc(s.error)}</span></div></li>`;
-      return `<li class="t-item busy" data-tkey="${esc(key)}"><span class="spin" aria-hidden="true"></span><div>${name}
-        <div class="t-row"><div class="bar" role="progressbar" aria-label="Upload of clip ${i + 1}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div></div></div><span class="t-pct"></span></div></div></li>`;
-    }).join("");
-  }
-  for (const { key, s } of busy) {
-    const row = list.querySelector(`[data-tkey="${key}"]`);
-    if (!row) continue;
-    const p = s.status === "uploading" ? (s.progress || 0) : 0;
-    row.querySelector(".bar > div").style.width = p + "%";
-    row.querySelector(".bar").setAttribute("aria-valuenow", p);
-    row.querySelector(".t-pct").textContent = s.status === "queued" ? "Waiting" : p + "%";
-  }
-}
-$("#trayToggle").addEventListener("click", () => {
-  trayOpen = !trayOpen;
-  $("#tray").classList.toggle("min", !trayOpen);
-  $("#trayToggle").setAttribute("aria-expanded", String(trayOpen));
-  $("#trayToggle").setAttribute("aria-label", trayOpen ? "Minimize uploads" : "Show uploads");
-});
-$("#trayClose").addEventListener("click", () => { trayKeys.clear(); renderTray(); });
-
-let posting = null; // { job, index }
-let returnFocus = null; // the "Post to YouTube" button, so focus goes back there when the dialog closes
-
-function openPost(jobId, index) {
-  const job = jobs.find((j) => j.id === jobId);
-  const c = job && job.clips[index];
-  if (!c) return;
-  if (!yt.connected) {
-    $("#ytmsg").innerHTML = yt.configured
-      ? `<div class="banner">Click <b>Connect YouTube</b> at the top first.</div>`
-      : `<div class="banner">YouTube posting isn't set up yet. <a href="${SETUP_DOC}" target="_blank" rel="noopener">Follow the 5-minute setup guide</a>.</div>`;
-    window.scrollTo({ top: 0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-    return;
-  }
-  posting = { job: jobId, index, video: c.video };
-  returnFocus = document.activeElement;
-  $("#ytchan").textContent = yt.channel ? `· ${yt.channel.title}` : "";
-  $("#ytTitle").value = (c.title || "").replace(/[<>]/g, "").slice(0, 100);
-  $("#ytDesc").value = c.description || "";
-  $("#ytTags").value = (c.hashtags || []).map((h) => "#" + h).join(" ");
-  $("#ytPrivacy").value = "public";
-  $("#ytPrivacy").disabled = false;
-  $("#ytWhen").value = "now";
-  $("#ytLaterBox").hidden = true;
-  const soon = new Date(Date.now() + 60 * 60 * 1000);
-  soon.setMinutes(0, 0, 0);
-  $("#ytAt").value = new Date(soon.getTime() - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  document.querySelectorAll('input[name="ytKids"]').forEach((r) => (r.checked = false));
-  $("#ytNotify").checked = true;
-  const fromYouTube = /^https?:\/\/([\w-]+\.)?(youtube\.com|youtu\.be)\//i.test(job.url || "");
-  $("#ytLinkRow").hidden = !fromYouTube;
-  $("#ytLink").checked = false;
-  $("#yterr").textContent = "";
-  updateCount();
-  $("#ytdlg").showModal();
-}
-
-function updateCount() { $("#ytCount").textContent = `${$("#ytTitle").value.length}/100`; }
-$("#ytTitle").addEventListener("input", updateCount);
-$("#ytWhen").addEventListener("change", () => {
-  const later = $("#ytWhen").value === "later";
-  $("#ytLaterBox").hidden = !later;
-  // YouTube makes a scheduled video public at the chosen time, so scheduling means Public.
-  if (later) $("#ytPrivacy").value = "public";
-  $("#ytPrivacy").disabled = later;
-});
-$("#ytCancel").addEventListener("click", () => $("#ytdlg").close());
-$("#ytdlg").addEventListener("close", () => { if (returnFocus && document.contains(returnFocus)) returnFocus.focus(); });
-
-$("#ytform").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (!posting) return;
-  const kids = document.querySelector('input[name="ytKids"]:checked');
-  if (!kids) { $("#yterr").textContent = "Choose whether the video is made for kids."; return; }
-  let publish_at = null;
-  if ($("#ytWhen").value === "later") {
-    const at = new Date($("#ytAt").value);
-    if (isNaN(at)) { $("#yterr").textContent = "Pick a date and time to publish."; return; }
-    if (at <= new Date()) { $("#yterr").textContent = "The publish time must be in the future."; return; }
-    publish_at = at.toISOString(); // UTC, e.g. 2026-11-16T13:30:00.000Z
-  }
-  const body = {
-    title: $("#ytTitle").value,
-    description: $("#ytDesc").value,
-    hashtags: $("#ytTags").value.split(/[\s,]+/).map((t) => t.replace(/^#+/, "")).filter(Boolean),
-    privacy: $("#ytPrivacy").value,
-    publish_at,
-    made_for_kids: kids.value === "yes",
-    notify_subscribers: $("#ytNotify").checked,
-    add_source_link: !$("#ytLinkRow").hidden && $("#ytLink").checked,
-    clip_video: posting.video, // lets the server refuse if this position now holds another clip
-  };
-  $("#ytSubmit").disabled = true;
-  try {
-    await api(`/api/jobs/${posting.job}/clips/${posting.index}/youtube`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    });
-    $("#ytdlg").close();
-    await refresh();
-  } catch (err) {
-    $("#yterr").textContent = err.message;
-  } finally {
-    $("#ytSubmit").disabled = false;
-  }
-});
 
 async function refresh() {
   try { jobs = await api("/api/jobs"); } catch { return; }
   render();
   const active = jobs.some((j) => j.status === "queued" || j.status === "running");
-  const uploading = jobs.some((j) => (j.clips || []).some(ytBusy));
   clearTimeout(timer);
-  if (active || uploading) timer = setTimeout(refresh, 1500);
+  if (active) timer = setTimeout(refresh, 1500);
   jobsEl.setAttribute("aria-busy", active ? "true" : "false");
   $("#go").disabled = active;
   $("#go").textContent = active ? "Working…" : "Get clips";
@@ -953,7 +791,6 @@ function clipCard(c, jobId, i) {
   const key = `${jobId}:${i}`;
   return `<li class="clip" data-clip="${esc(key)}">
     <div class="compact">
-      <span class="okmark" aria-hidden="true">${ICON_CHECK}</span><span class="sr-only okmark-txt">Posted. </span>
       <span class="rank">#${i + 1}</span>
       <span class="ctitle">${esc(c.title)}</span>
       <span class="cstat" data-cstat="${esc(key)}"></span>
@@ -983,14 +820,11 @@ function clipCard(c, jobId, i) {
       ${c.reason ? `<p class="why"><span>Why it works:</span> ${esc(c.reason)}</p>` : ""}
       ${tags ? `<div class="tags">${esc(tags)}</div>` : ""}
       <div class="actions">
-        <a class="dl" href="${esc(c.video)}" download="${esc((c.title || "clip").replace(/[\\/:*?"<>|]+/g, "").slice(0, 60))}.mp4">
+        <a class="dl" href="/api/jobs/${esc(jobId)}/clips/${i}/download">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 19h16"/></svg>Download<span class="sr-only"> clip ${i + 1}</span></a>
-        <button class="post" type="button" data-post="${esc(jobId)}:${i}">
-          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="4" fill="#ff3b30"/><path d="M10 9v6l5-3z" fill="#fff"/></svg><span class="post-txt">Post to YouTube</span><span class="sr-only"> (clip ${i + 1})</span></button>
         <button class="more" type="button" data-more="${esc(jobId)}:${i}" aria-haspopup="menu" aria-expanded="false" aria-label="More options for clip ${i + 1}">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
       </div>
-      <div class="ytstat" data-ytstat="${esc(jobId)}:${i}"></div>
     </div>
   </li>`;
 }
@@ -1039,8 +873,6 @@ function ago(sec) {
   return new Date(sec * 1000).toLocaleDateString();
 }
 
-const postedCount = (j) => (j.clips || []).filter((c) => ytState(c) === "done").length;
-
 // Which videos are open. Untouched ones: the newest and anything still working are open, older ones folded.
 const jobOpen = new Map();
 const isJobOpen = (j, idx) => (jobOpen.has(j.id) ? jobOpen.get(j.id) : idx === 0 || j.status === "queued" || j.status === "running" || j.status === "error");
@@ -1068,7 +900,6 @@ function jobBlock(j, idx) {
   ].join("");
   const stats = n ? `<dl class="stats">
       <div><dt>Clips</dt><dd>${n}</dd></div>
-      <div><dt>Posted</dt><dd data-posted="${esc(j.id)}">${postedCount(j)}</dd></div>
       <div><dt>Best score</dt><dd style="color:${scoreColor(best)}">${best}</dd></div>
     </dl>` : "";
   return `<section class="job${open ? "" : " closed"}" data-job="${esc(j.id)}" aria-labelledby="jt-${esc(j.id)}">
@@ -1132,7 +963,6 @@ function announceFinished() {
 function render() {
   // Don't rebuild a finished job's cards on every poll: it would restart any video that's playing.
   const sig = JSON.stringify(jobs.map((j) => [j.id, j.status, j.progress, j.message, j.clips.length, j.warning]));
-  updateYouTubeStatus(); // upload progress updates in place, without restarting playing videos
   if (sig === render.last) return;
   const structural = JSON.stringify(jobs.map((j) => [j.id, j.status, j.clips.length, j.warning]));
   if (structural === render.lastStructural) {
@@ -1152,7 +982,6 @@ function render() {
       ? `<div class="jobs-head"><h2>Your videos</h2><span>${jobs.length} video${jobs.length > 1 ? "s" : ""} · ${jobs.reduce((a, j) => a + j.clips.length, 0)} clips</span></div>`
         + jobs.map((j, k) => jobBlock(j, k)).join("")
       : `<div class="empty"><strong>No clips yet</strong>Paste a link above and your clips will show up here, best first.</div>`;
-    updateYouTubeStatus();
   }
   render.last = sig;
   render.lastStructural = structural;
@@ -1180,6 +1009,11 @@ for (const id of ["url", "from", "to"]) $("#" + id).addEventListener("input", (e
 $("#form").addEventListener("submit", async (e) => {
   e.preventDefault();
   $("#formerr").textContent = "";
+  if (!account) {
+    $("#formerr").textContent = "Sign in with Google before generating clips.";
+    signIn();
+    return;
+  }
   const [min_len, max_len] = radio("len").split("-").map(Number);
   const file = $("#file").files[0];
   let start_time, end_time;
@@ -1261,8 +1095,6 @@ function toast(msg) {
 const menu = { el: null, btn: null, job: null, index: null };
 const MI = {
   copy: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`,
-  yt: `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="4" fill="#ff3b30"/><path d="M10 9v6l5-3z" fill="#fff"/></svg>`,
-  open: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>`,
   del: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>`,
 };
 
@@ -1271,14 +1103,10 @@ function openMenu(btn, jobId, index) {
   const job = jobs.find((j) => j.id === jobId);
   const c = job && job.clips[index];
   if (!c) return;
-  const st = ytState(c);
-  const busy = st === "queued" || st === "uploading";
   const items = [
     `<button role="menuitem" type="button" data-act="copy">${MI.copy}Copy title, description and hashtags</button>`,
-    st === "done" && c.youtube.url ? `<button role="menuitem" type="button" data-act="open">${MI.open}Open on YouTube</button>` : "",
-    `<button role="menuitem" type="button" data-act="post" ${busy ? 'aria-disabled="true"' : ""}>${MI.yt}${st === "done" ? "Post to YouTube again" : busy ? "Uploading to YouTube…" : "Post to YouTube"}</button>`,
     `<div class="menu-sep" role="separator"></div>`,
-    `<button role="menuitem" type="button" data-act="delete" class="danger" ${busy ? 'aria-disabled="true"' : ""}>${MI.del}Delete this clip</button>`,
+    `<button role="menuitem" type="button" data-act="delete" class="danger">${MI.del}Delete this clip</button>`,
   ].join("");
   const el = document.createElement("div");
   el.className = "menu";
@@ -1338,16 +1166,12 @@ async function menuClick(e) {
       await navigator.clipboard.writeText([c.title, c.description, tags].filter(Boolean).join("\n\n"));
       toast("Copied the title, description and hashtags.");
     } catch { toast("Couldn't copy. Your browser blocked the clipboard."); }
-  } else if (act === "open") {
-    window.open(c.youtube.url, "_blank", "noopener");
-  } else if (act === "post") {
-    openPost(jobId, index);
   } else if (act === "delete") {
     if (!confirm(`Delete clip ${index + 1}, "${c.title}"? This removes the video file and can't be undone.`)) return;
     try {
       await api(`/api/jobs/${jobId}/clips/${index}`, { method: "DELETE" });
       // Clip positions shift after a delete, so forget per-clip state for this video.
-      for (const s of [trayKeys, foldPref]) for (const k of [...s.keys()]) if (k.startsWith(jobId + ":")) s.delete(k);
+      for (const k of [...foldPref.keys()]) if (k.startsWith(jobId + ":")) foldPref.delete(k);
       render.last = render.lastStructural = null; // positions shifted: rebuild the list
       await refresh();
       toast(`Deleted clip ${index + 1}.`);
@@ -1361,12 +1185,6 @@ document.addEventListener("click", (e) => {
 addEventListener("resize", () => closeMenu(false));
 
 jobsEl.addEventListener("click", async (e) => {
-  const post = e.target.closest("[data-post]");
-  if (post) {
-    const [jobId, i] = post.dataset.post.split(":");
-    openPost(jobId, +i);
-    return;
-  }
   const jt = e.target.closest("[data-jobtoggle]");
   if (jt) { toggleJob(jt.dataset.jobtoggle); return; }
   const exp = e.target.closest("[data-expand]");

@@ -1,4 +1,5 @@
 import json
+import subprocess
 import wave
 
 import numpy as np
@@ -84,12 +85,35 @@ def test_whisper_gets_decoded_audio_not_a_path(tmp_path, monkeypatch):
     monkeypatch.setattr(faster_whisper, "WhisperModel", FakeModel)
 
     def fake_ffmpeg(cmd, **kw):  # write the wav ffmpeg would have produced
+        if cmd[0] == "ffprobe":
+            return subprocess.CompletedProcess(cmd, 0, stdout="audio\n", stderr="")
         _write_wav(cmd[-1], np.zeros(16000))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr(source.subprocess, "run", fake_ffmpeg)
     words = source.whisper_transcribe(tmp_path / "v.mp4", tmp_path, lambda *a: None)
     assert isinstance(seen["audio"], np.ndarray)
     assert [w.text for w in words] == ["hi"]
+
+
+def test_whisper_explains_when_uploaded_video_has_no_audio(tmp_path, monkeypatch):
+    def fake_ffprobe(cmd, **kw):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(source.subprocess, "run", fake_ffprobe)
+    with pytest.raises(ValueError, match="video has no audio track"):
+        source.whisper_transcribe(tmp_path / "silent.mp4", tmp_path, lambda *a: None)
+
+
+def test_whisper_reports_ffmpeg_audio_extraction_error(tmp_path, monkeypatch):
+    def fake_process(cmd, **kw):
+        if cmd[0] == "ffprobe":
+            return subprocess.CompletedProcess(cmd, 0, stdout="audio\n", stderr="")
+        return subprocess.CompletedProcess(cmd, 234, stdout="", stderr="Decoder failed.")
+
+    monkeypatch.setattr(source.subprocess, "run", fake_process)
+    with pytest.raises(RuntimeError, match="Could not extract audio from the video: Decoder failed"):
+        source.whisper_transcribe(tmp_path / "video.mp4", tmp_path, lambda *a: None)
 
 
 def test_events_without_text_are_ignored(tmp_path):

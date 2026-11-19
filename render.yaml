@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: reelcraft-ai
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: AI_PROVIDER
+        value: gemini
+      - key: MAX_SOURCE_MINUTES
+        value: "5"
+      - key: MONGODB_DATABASE
+        value: reelcraft
+      - key: CLIPSMITH_ALLOWED_HOSTS
+        value: reelcraft-ai.onrender.com
+      - key: MONGODB_URI
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: ADMIN_EMAIL
+        value: iamhimanshugangwar@gmail.com
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CLOUDINARY_URL
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false

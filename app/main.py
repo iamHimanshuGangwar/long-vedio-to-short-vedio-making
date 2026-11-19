@@ -12,25 +12,33 @@ import time
 import traceback
 import uuid
 import zipfile
+import hmac
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 from starlette.background import BackgroundTask
 
-from . import config, render, selector, source, trim, youtube
+from . import accounts, config, render, selector, source, trim
 
-app = FastAPI(title="Clipsmith")
+app = FastAPI(title="ReelCraft AI")
 
 
-_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"} | {
+_ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"} | {
     h.strip().lower() for h in os.environ.get("CLIPSMITH_ALLOWED_HOSTS", "").split(",") if h.strip()
 }
+_RENDER_HOST = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip().lower()
+if _RENDER_HOST:
+    _ALLOWED_HOSTS.add(_RENDER_HOST)
+_ADMIN_LOGIN_ATTEMPTS: dict[str, list[float]] = {}
+_ADMIN_LOGIN_LOCK = threading.Lock()
 
 
 def _hostname(host_header: str) -> str:
@@ -42,26 +50,22 @@ def _hostname(host_header: str) -> str:
 
 @app.middleware("http")
 async def same_origin_only(request: Request, call_next):
-    """Only this computer's own web pages may use the app.
-
-    - Host check (DNS rebinding): a site can point its own name at 127.0.0.1,
-      making its requests look same-origin. Requests not addressed to
-      127.0.0.1 / localhost are refused, reads included.
-    - Origin check (CSRF): browsers send Origin on cross-site POST/DELETE; a
-      page on another site must not delete videos, post clips or disconnect
-      YouTube. Extra hostnames can be allowed with CLIPSMITH_ALLOWED_HOSTS."""
-    if _hostname(request.headers.get("host", "")) not in _LOCAL_HOSTS:
-        return JSONResponse({"detail": "Open Clipsmith at http://127.0.0.1:8765."}, status_code=403)
+    """Allow only configured hosts and same-origin state-changing browser requests."""
+    host = _hostname(request.headers.get("host", ""))
+    if host not in _ALLOWED_HOSTS:
+        return JSONResponse({"detail": "This host is not configured for ReelCraft AI."}, status_code=403)
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         origin = request.headers.get("origin")
-        if origin and origin.rstrip("/") != str(request.base_url).rstrip("/"):
-            return JSONResponse({"detail": "Request from another website refused."}, status_code=403)
+        if origin:
+            scheme = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
+            expected_origin = f"{scheme}://{request.headers.get('host', '')}".rstrip("/")
+            if origin.rstrip("/") != expected_origin:
+                return JSONResponse({"detail": "Request from another website refused."}, status_code=403)
     return await call_next(request)
 
 _jobs: dict[str, dict] = {}
 _lock = threading.Lock()
 _pool = ThreadPoolExecutor(max_workers=1)  # one video at a time; encoding uses every core
-_upload_pool = ThreadPoolExecutor(max_workers=1)  # YouTube uploads don't wait behind rendering
 
 _YT = re.compile(r"^https?://([\w-]+\.)?(youtube\.com|youtu\.be)/", re.I)
 
@@ -79,6 +83,284 @@ class JobRequest(BaseModel):
     end_time: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     aspect: str = "9:16"
     trim_pauses: bool = True
+
+
+class GoogleCredential(BaseModel):
+    credential: str = Field(max_length=8192)
+
+
+class AdminLogin(BaseModel):
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=1024)
+
+
+class PaymentOrder(BaseModel):
+    plan: str
+    billing: str
+
+
+class PaymentVerification(BaseModel):
+    razorpay_order_id: str = Field(pattern=r"^order_[A-Za-z0-9]+$")
+    razorpay_payment_id: str = Field(pattern=r"^pay_[A-Za-z0-9]+$")
+    razorpay_signature: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
+
+
+class AdminPlanUpdate(BaseModel):
+    plan: str
+    billing: str = "monthly"
+
+
+class AdminBanUpdate(BaseModel):
+    banned: bool
+
+
+class AdminLimitUpdate(BaseModel):
+    max_source_minutes: int = Field(ge=1, le=10)
+
+
+def _session_cookie(response: Response, user_id: str, request: Request) -> None:
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip().lower()
+    response.set_cookie(
+        accounts.SESSION_COOKIE, accounts.make_session(user_id), httponly=True,
+        secure=scheme == "https",
+        samesite="lax", max_age=60 * 60 * 24 * 14, path="/",
+    )
+
+
+@app.post("/api/auth/google")
+def google_auth(body: GoogleCredential, request: Request, response: Response) -> dict:
+    user = accounts.google_login(body.credential)
+    _session_cookie(response, str(user["_id"]), request)
+    return accounts._public_user(user)
+
+
+@app.post("/api/admin/login")
+def admin_login(body: AdminLogin, request: Request, response: Response) -> dict:
+    if not config.ADMIN_EMAIL or not config.ADMIN_PASSWORD:
+        raise HTTPException(503, "Administrator login is not configured.")
+    now = time.time()
+    address = request.client.host if request.client else "unknown"
+    with _ADMIN_LOGIN_LOCK:
+        recent = [t for t in _ADMIN_LOGIN_ATTEMPTS.get(address, []) if now - t < 900]
+        _ADMIN_LOGIN_ATTEMPTS[address] = recent
+        if len(recent) >= 5:
+            raise HTTPException(429, "Too many administrator sign-in attempts. Try again in 15 minutes.")
+    if len(config.ADMIN_PASSWORD) < 16:
+        raise HTTPException(503, "ADMIN_PASSWORD must be at least 16 characters. Rotate and configure a strong secret.")
+    if not hmac.compare_digest(body.email.strip().lower(), config.ADMIN_EMAIL) or not hmac.compare_digest(
+        body.password, config.ADMIN_PASSWORD
+    ):
+        with _ADMIN_LOGIN_LOCK:
+            _ADMIN_LOGIN_ATTEMPTS.setdefault(address, []).append(now)
+        raise HTTPException(401, "Invalid administrator credentials.")
+    with _ADMIN_LOGIN_LOCK:
+        _ADMIN_LOGIN_ATTEMPTS.pop(address, None)
+    db = accounts.mongo_db()
+    user = db.users.find_one({"email": config.ADMIN_EMAIL})
+    if not user:
+        user = {
+            "email": config.ADMIN_EMAIL, "name": "Administrator", "role": "admin", "plan": "gold",
+            "used": 0, "cycle": "", "banned": False,
+            "created_at": datetime.now().astimezone(),
+        }
+        db.users.insert_one(user)
+    else:
+        db.users.update_one({"_id": user["_id"]}, {"$set": {"role": "admin"}})
+        user["role"] = "admin"
+    _session_cookie(response, str(user["_id"]), request)
+    return accounts._public_user(user)
+
+
+@app.post("/api/auth/logout")
+def logout(response: Response) -> dict:
+    response.delete_cookie(accounts.SESSION_COOKIE, path="/", httponly=True, samesite="lax")
+    return {"ok": True}
+
+
+@app.get("/api/auth/me")
+def auth_me(request: Request) -> dict | None:
+    try:
+        user = accounts.current_user(request)
+    except HTTPException as exc:
+        if exc.status_code == 401:
+            return None
+        raise
+    plan = accounts.active_plan(user)
+    return accounts._public_user(user) | {
+        "plan": plan, "max_minutes": min(accounts.server_max_minutes(), accounts.PLANS[plan]["minutes"]),
+    }
+
+
+@app.get("/api/plans")
+def plans() -> dict:
+    return {"plans": accounts.PLANS}
+
+
+@app.post("/api/payments/order")
+def create_payment_order(body: PaymentOrder, user: dict = Depends(accounts.current_user)) -> dict:
+    if body.plan not in ("normal", "premium", "gold") or body.billing not in ("monthly", "yearly"):
+        raise HTTPException(400, "Choose a valid paid plan and billing period.")
+    if not config.RAZORPAY_KEY_ID or not config.RAZORPAY_KEY_SECRET:
+        raise HTTPException(503, "Payments are not configured. Add Razorpay credentials in the deployment environment.")
+    import requests
+
+    amount_rupees = accounts.PLANS[body.plan][body.billing]
+    result = requests.post(
+        "https://api.razorpay.com/v1/orders",
+        auth=(config.RAZORPAY_KEY_ID, config.RAZORPAY_KEY_SECRET),
+        json={"amount": amount_rupees * 100, "currency": "INR", "receipt": uuid.uuid4().hex[:40],
+              "notes": {"user_id": str(user["_id"]), "plan": body.plan, "billing": body.billing}},
+        timeout=15,
+    )
+    if not result.ok:
+        raise HTTPException(502, "Could not create a Razorpay order.")
+    order = result.json()
+    accounts.mongo_db().orders.insert_one({
+        "_id": order["id"], "user_id": user["_id"], "plan": body.plan, "billing": body.billing,
+        "amount": amount_rupees * 100, "created_at": datetime.now().astimezone(),
+    })
+    return {"order_id": order["id"], "amount": order["amount"], "currency": order["currency"],
+            "key_id": config.RAZORPAY_KEY_ID}
+
+
+@app.post("/api/payments/verify")
+def verify_payment(body: PaymentVerification, user: dict = Depends(accounts.current_user)) -> dict:
+    if not config.RAZORPAY_KEY_ID or not config.RAZORPAY_KEY_SECRET:
+        raise HTTPException(503, "Payments are not configured.")
+    expected = hmac.new(
+        config.RAZORPAY_KEY_SECRET.encode(),
+        f"{body.razorpay_order_id}|{body.razorpay_payment_id}".encode(), hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected, body.razorpay_signature):
+        raise HTTPException(400, "Payment signature verification failed.")
+    db = accounts.mongo_db()
+    order = db.orders.find_one({"_id": body.razorpay_order_id, "user_id": user["_id"]})
+    if not order:
+        raise HTTPException(404, "Payment order not found.")
+    import requests
+
+    response = requests.get(
+        f"https://api.razorpay.com/v1/payments/{body.razorpay_payment_id}",
+        auth=(config.RAZORPAY_KEY_ID, config.RAZORPAY_KEY_SECRET), timeout=15,
+    )
+    if not response.ok:
+        raise HTTPException(502, "Could not confirm payment status with Razorpay.")
+    payment = response.json()
+    if (
+        payment.get("order_id") != order["_id"]
+        or int(payment.get("amount", -1)) != order["amount"]
+        or payment.get("currency") != "INR"
+    ):
+        raise HTTPException(400, "The payment does not match the order.")
+    if payment.get("status") == "authorized":
+        captured = requests.post(
+            f"https://api.razorpay.com/v1/payments/{body.razorpay_payment_id}/capture",
+            auth=(config.RAZORPAY_KEY_ID, config.RAZORPAY_KEY_SECRET),
+            json={"amount": order["amount"], "currency": "INR"}, timeout=15,
+        )
+        if not captured.ok:
+            raise HTTPException(502, "Razorpay authorized the payment but capture failed. Contact support before retrying.")
+        payment = captured.json()
+    if payment.get("status") != "captured":
+        raise HTTPException(409, "Payment is not captured yet.")
+    claim = db.orders.update_one(
+        {"_id": order["_id"], "user_id": user["_id"], "paid": {"$ne": True}},
+        {"$set": {"paid": True, "payment_id": body.razorpay_payment_id}},
+    )
+    if claim.modified_count:
+        now = datetime.now(timezone.utc)
+        days = 365 if order["billing"] == "yearly" else 30
+        activated = db.users.update_one({"_id": user["_id"], "banned": {"$ne": True}}, {"$set": {
+            "plan": order["plan"], "billing": order["billing"], "plan_expires": now + timedelta(days=days),
+            "used": 0, "cycle": "",
+        }})
+        if not activated.matched_count:
+            db.orders.update_one(
+                {"_id": order["_id"], "payment_id": body.razorpay_payment_id},
+                {"$set": {"paid": False}, "$unset": {"payment_id": ""}},
+            )
+            raise HTTPException(404, "Account not found while activating the plan.")
+    else:
+        paid_order = db.orders.find_one({"_id": order["_id"], "user_id": user["_id"], "paid": True})
+        if not paid_order or paid_order.get("payment_id") != body.razorpay_payment_id:
+            raise HTTPException(409, "This order has already been processed.")
+    return {"ok": True}
+
+
+@app.get("/api/admin/users")
+def admin_users(user: dict = Depends(accounts.admin_user)) -> list[dict]:
+    users = accounts.mongo_db().users.find({}, {"email": 1, "name": 1, "role": 1, "plan": 1, "billing": 1,
+                                                  "used": 1, "cycle": 1, "banned": 1})
+    return [accounts._public_user(item) for item in users]
+
+
+@app.patch("/api/admin/users/{email}/plan")
+def admin_update_plan(email: str, body: AdminPlanUpdate, user: dict = Depends(accounts.admin_user)) -> dict:
+    if body.plan not in accounts.PLANS or body.billing not in ("monthly", "yearly"):
+        raise HTTPException(400, "Invalid plan or billing period.")
+    result = accounts.mongo_db().users.update_one({"email": email.lower()}, {"$set": {
+        "plan": body.plan, "billing": body.billing, "used": 0, "cycle": "",
+        "plan_expires": datetime.now().astimezone() + timedelta(days=365 if body.billing == "yearly" else 30),
+    }})
+    if not result.matched_count:
+        raise HTTPException(404, "User not found.")
+    return {"ok": True}
+
+
+@app.patch("/api/admin/users/{email}/ban")
+def admin_ban_user(email: str, body: AdminBanUpdate, user: dict = Depends(accounts.admin_user)) -> dict:
+    if email.lower() == config.ADMIN_EMAIL:
+        raise HTTPException(400, "The administrator account cannot be banned.")
+    result = accounts.mongo_db().users.update_one({"email": email.lower()}, {"$set": {"banned": body.banned}})
+    if not result.matched_count:
+        raise HTTPException(404, "User not found.")
+    return {"ok": True}
+
+
+@app.post("/api/admin/users/{email}/reset")
+def admin_reset_user(email: str, user: dict = Depends(accounts.admin_user)) -> dict:
+    result = accounts.mongo_db().users.update_one(
+        {"email": email.lower()}, {"$set": {"used": 0, "cycle": ""}}
+    )
+    if not result.matched_count:
+        raise HTTPException(404, "User not found.")
+    return {"ok": True}
+
+
+@app.put("/api/admin/settings/max-source-minutes")
+def admin_update_limit(body: AdminLimitUpdate, user: dict = Depends(accounts.admin_user)) -> dict:
+    accounts.mongo_db().settings.update_one(
+        {"_id": "max_source_minutes"}, {"$set": {"value": body.max_source_minutes}}, upsert=True
+    )
+    return {"max_source_minutes": body.max_source_minutes}
+
+
+def _delete_cloudinary_assets(clips: list[dict]) -> None:
+    if os.environ.get("APP_ENV") != "production":
+        return
+    assets_to_delete = [
+        (public_id, resource_type)
+        for clip in clips
+        for key, resource_type in (("video", "video"), ("thumb", "image"))
+        if (public_id := (clip.get("cloudinary") or {}).get(key))
+    ]
+    if not assets_to_delete:
+        return
+    if not config.CLOUDINARY_URL:
+        raise HTTPException(503, "Cloudinary storage is not configured.")
+    import cloudinary
+    import cloudinary.uploader
+
+    cloudinary.config(url=config.CLOUDINARY_URL, secure=True)
+    for public_id, resource_type in assets_to_delete:
+        try:
+            result = cloudinary.uploader.destroy(
+                public_id, resource_type=resource_type, type="authenticated", invalidate=True,
+            )
+        except Exception as exc:
+            raise HTTPException(502, "Could not delete the clip from Cloudinary. Please retry.") from exc
+        if result.get("result") not in ("ok", "not found"):
+            raise HTTPException(502, "Cloudinary did not confirm clip deletion. Please retry.")
 
 
 _JOB_ID = re.compile(r"[0-9a-f]{10}")  # uuid4().hex[:10], see _new_job
@@ -103,6 +385,7 @@ def _save(job: dict) -> None:
     tmp = d / "job.json.tmp"
     tmp.write_text(json.dumps(job, ensure_ascii=False, indent=1), encoding="utf-8")
     tmp.replace(d / "job.json")
+    accounts.persist_job(job)
 
 
 def _update(job_id: str, **fields) -> None:
@@ -110,6 +393,19 @@ def _update(job_id: str, **fields) -> None:
         job = _jobs[job_id]
         job.update(fields)
         _save(job)
+
+
+def _recover_interrupted_job(job: dict) -> None:
+    if job.get("status") not in ("queued", "running"):
+        return
+    job["status"] = "error"
+    job["error"] = "Processing was interrupted when the server restarted. Start a new job to try again."
+    reserved = int(job.get("quota_reserved", 0))
+    remaining = reserved - len(job.get("clips") or [])
+    if not job.get("quota_refunded") and remaining > 0:
+        accounts.refund_quota(job, remaining)
+        job["quota_refunded"] = True
+    _save(job)
 
 
 def _load_existing() -> None:
@@ -120,13 +416,7 @@ def _load_existing() -> None:
             continue
         if not _JOB_ID.fullmatch(str(job.get("id", ""))):
             continue  # not a job this app created
-        if job.get("status") in ("queued", "running"):
-            job["status"] = "error"
-            job["error"] = "The app was closed while this was processing."
-        for clip in job.get("clips") or []:
-            yt = clip.get("youtube")
-            if yt and yt.get("status") in ("queued", "uploading"):
-                clip["youtube"] = {"status": "error", "error": "The app was closed during the upload. Post it again."}
+        _recover_interrupted_job(job)
         _jobs[job["id"]] = job
 
 
@@ -193,12 +483,16 @@ def _run(job_id: str, req: JobRequest) -> None:
 
     try:
         _update(job_id, status="running")
-        upload = _jobs[job_id].get("upload")
+        job_meta = _jobs[job_id]
+        upload = job_meta.get("upload")
+        plan = accounts.PLANS.get(job_meta.get("plan", "free"), accounts.PLANS["free"])
+        max_seconds = min(accounts.server_max_minutes(), plan["minutes"]) * 60
         if upload:
             path = next(workdir.glob("source.*"))
-            src = source.from_local_file(path, workdir, progress, title=Path(upload).stem)
+            src = source.from_local_file(path, workdir, progress, title=Path(upload).stem,
+                                         max_duration_seconds=max_seconds)
         else:
-            src = source.download(req.url, workdir, progress)
+            src = source.download(req.url, workdir, progress, max_duration_seconds=max_seconds)
         _update(job_id, title=src.title, duration=src.duration, transcript_source=src.transcript_source)
 
         progress(42, "Finding the best moments")
@@ -231,14 +525,59 @@ def _run(job_id: str, req: JobRequest) -> None:
                 style=req.style, layout=req.layout, hook=clip.hook if req.hook else None, aspect=req.aspect,
                 keep=keep,
             )
+            video_path = workdir / f"{name}.mp4"
+            thumb_path = workdir / f"{name}.jpg"
+            if os.environ.get("APP_ENV") == "production":
+                if not config.CLOUDINARY_URL:
+                    raise RuntimeError("Clip storage is not configured. Set CLOUDINARY_URL.")
+                import cloudinary
+                import cloudinary.utils
+                import cloudinary.uploader
+
+                cloudinary.config(url=config.CLOUDINARY_URL, secure=True)
+                remote = None
+                thumb = None
+                try:
+                    remote = cloudinary.uploader.upload(
+                        str(video_path), resource_type="video", type="authenticated",
+                        folder=f"reelcraft/{job_id}", use_filename=True,
+                    )
+                    thumb = cloudinary.uploader.upload(
+                        str(thumb_path), resource_type="image", type="authenticated",
+                        folder=f"reelcraft/{job_id}", use_filename=True,
+                    )
+                    video_url = cloudinary.utils.cloudinary_url(
+                        remote["public_id"], resource_type="video", type="authenticated",
+                        sign_url=True, secure=True, format="mp4",
+                    )[0]
+                    thumb_url = cloudinary.utils.cloudinary_url(
+                        thumb["public_id"], resource_type="image", type="authenticated",
+                        sign_url=True, secure=True, format="jpg",
+                    )[0]
+                except Exception:
+                    for asset, resource_type in ((remote, "video"), (thumb, "image")):
+                        if asset and asset.get("public_id"):
+                            cloudinary.uploader.destroy(
+                                asset["public_id"], resource_type=resource_type, type="authenticated",
+                                invalidate=True,
+                            )
+                    raise
+                video_path.unlink(missing_ok=True)
+                thumb_path.unlink(missing_ok=True)
+            else:
+                video_url, thumb_url = f"/media/{job_id}/{name}.mp4", f"/media/{job_id}/{name}.jpg"
             done.append(
                 asdict(clip)
                 | {
                     "start": round(start, 2),
                     "end": round(end, 2),
                     "length": round(info.get("length", end - start), 1),
-                    "video": f"/media/{job_id}/{name}.mp4",
-                    "thumb": f"/media/{job_id}/{name}.jpg",
+                    "video": video_url,
+                    "thumb": thumb_url,
+                    "cloudinary": (
+                        {"video": remote["public_id"], "thumb": thumb["public_id"]}
+                        if os.environ.get("APP_ENV") == "production" else None
+                    ),
                     "layout": info["layout"],
                     "aspect": req.aspect,
                 }
@@ -248,16 +587,36 @@ def _run(job_id: str, req: JobRequest) -> None:
         src.video_path.unlink(missing_ok=True)  # the source is large; clips are what matter
         for leftover in workdir.glob("source.*"):
             leftover.unlink(missing_ok=True)
+        reserved = int(job_meta.get("quota_reserved", 0))
+        if reserved > len(done):
+            accounts.refund_quota(job_meta, reserved - len(done))
+            _update(job_id, quota_refunded=True)
         _update(job_id, status="done", progress=100, message="Done")
     except Exception as exc:
         traceback.print_exc()
+        job_meta = _jobs.get(job_id, {})
+        if not job_meta.get("quota_refunded") and job_meta.get("quota_reserved"):
+            refund = int(job_meta["quota_reserved"]) - len(job_meta.get("clips") or [])
+            if refund > 0:
+                try:
+                    accounts.refund_quota(job_meta, refund)
+                    _update(job_id, quota_refunded=True)
+                except Exception:
+                    traceback.print_exc()
         _update(job_id, status="error", error=friendly_error(exc)[:500])
+    finally:
+        if os.environ.get("APP_ENV") == "production":
+            shutil.rmtree(workdir, ignore_errors=True)
 
 
 @app.get("/api/status")
 def status() -> dict:
     return {
         "ai": config.ai_provider(),
+        "auth_enabled": os.environ.get("REELCRAFT_TEST_MODE") != "1" or os.environ.get("APP_ENV") == "production",
+        "google_client_id": config.GOOGLE_CLIENT_ID,
+        "max_source_minutes": accounts.server_max_minutes(),
+        "plans": accounts.PLANS,
         "missing": config.missing_tools(),
         "model": {
             "gemini": config.GEMINI_MODEL,
@@ -272,6 +631,13 @@ def status() -> dict:
     }
 
 
+@app.get("/health")
+def health() -> dict:
+    if os.environ.get("APP_ENV") == "production":
+        accounts.mongo_db().command("ping")
+    return {"ok": True}
+
+
 def _check_options(req: JobRequest) -> None:
     if req.min_len >= req.max_len:
         raise HTTPException(400, "Minimum length must be shorter than maximum length.")
@@ -283,6 +649,22 @@ def _check_options(req: JobRequest) -> None:
         raise HTTPException(400, "The 'To' time must be after the 'From' time.")
     if req.aspect not in render.ASPECTS:
         raise HTTPException(400, "Unknown aspect ratio.")
+
+
+def _plan_request(req: JobRequest, user: dict) -> tuple[JobRequest, str, int]:
+    plan_key = accounts.active_plan(user)
+    plan = accounts.PLANS[plan_key]
+    max_minutes = min(accounts.server_max_minutes(), plan["minutes"])
+    if plan_key == "free":
+        free = accounts.FREE_SETTINGS
+        if not (free["min_len"] <= req.min_len < req.max_len <= free["max_len"]):
+            raise HTTPException(403, "The Free plan supports clip lengths from 15 to 30 seconds.")
+        req = req.model_copy(update={
+            "clip_count": free["clip_count"], "style": "yellow", "layout": free["layout"],
+            "hook": True, "prompt": "", "start_time": None, "end_time": None,
+            "aspect": free["aspect"], "trim_pauses": True,
+        })
+    return req, plan_key, max_minutes
 
 
 def _new_job(req: JobRequest, job_id: str | None = None, **extra) -> dict:
@@ -300,15 +682,37 @@ def _new_job(req: JobRequest, job_id: str | None = None, **extra) -> dict:
 
 
 @app.post("/api/jobs")
-def create_job(req: JobRequest) -> dict:
+def create_job(req: JobRequest, user: dict = Depends(accounts.current_user)) -> dict:
     if not _YT.match(req.url.strip()):
         raise HTTPException(400, "That doesn't look like a YouTube link.")
     _check_options(req)
-    return _new_job(req)
+    req, plan_key, _ = _plan_request(req, user)
+    reservation = accounts.reserve_quota(user, req.clip_count)
+    if reservation["plan"] != plan_key:
+        accounts.refund_quota(
+            {"owner_id": str(user["_id"]), "plan": reservation["plan"],
+             "quota_period": datetime.now(timezone.utc).strftime("%Y-%m")},
+            req.clip_count,
+        )
+        raise HTTPException(409, "Your plan changed. Reload the page and try again.")
+    period = datetime.now(timezone.utc).strftime("%Y-%m")
+    job_id = uuid.uuid4().hex[:10]
+    try:
+        return _new_job(req, job_id, owner_id=str(user["_id"]), plan=plan_key, quota_period=period,
+                        quota_reserved=req.clip_count)
+    except Exception:
+        _jobs.pop(job_id, None)
+        if config.MONGODB_URI and str(user["_id"]) != "test-user":
+            accounts.job_store().delete_one({"id": job_id, "owner_id": str(user["_id"])})
+        shutil.rmtree(_job_dir(job_id), ignore_errors=True)
+        accounts.refund_quota(
+            {"owner_id": str(user["_id"]), "plan": plan_key, "quota_period": period}, req.clip_count
+        )
+        raise
 
 
 _VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm"}
-_MAX_UPLOAD_BYTES = 8 * 1024**3
+_MAX_UPLOAD_BYTES = 500 * 1024**2
 
 
 @app.post("/api/jobs/upload")
@@ -325,6 +729,7 @@ async def upload_job(
     end_time: float | None = Form(None),
     aspect: str = Form("9:16"),
     trim_pauses: bool = Form(True),
+    user: dict = Depends(accounts.current_user),
 ) -> dict:
     name = Path(file.filename or "").name
     ext = Path(name).suffix.lower()
@@ -338,6 +743,7 @@ async def upload_job(
     except ValidationError as exc:
         raise HTTPException(422, str(exc)) from None
     _check_options(req)
+    req, plan_key, _ = _plan_request(req, user)
     job_id = uuid.uuid4().hex[:10]
     d = _job_dir(job_id)
     d.mkdir(parents=True, exist_ok=True)
@@ -347,25 +753,79 @@ async def upload_job(
             while chunk := await file.read(1024 * 1024):
                 size += len(chunk)
                 if size > _MAX_UPLOAD_BYTES:
-                    raise HTTPException(413, f"File is too large (limit {_MAX_UPLOAD_BYTES // 1024**3} GB).")
+                    raise HTTPException(413, f"File is too large (limit {_MAX_UPLOAD_BYTES // 1024**2} MiB).")
                 out.write(chunk)
     except BaseException:  # includes a cancelled/interrupted upload
         shutil.rmtree(d, ignore_errors=True)
         raise
-    return _new_job(req, job_id, upload=name)
+    try:
+        reservation = accounts.reserve_quota(user, req.clip_count)
+    except Exception:
+        shutil.rmtree(d, ignore_errors=True)
+        raise
+    if reservation["plan"] != plan_key:
+        period = datetime.now(timezone.utc).strftime("%Y-%m")
+        accounts.refund_quota(
+            {"owner_id": str(user["_id"]), "plan": reservation["plan"], "quota_period": period},
+            req.clip_count,
+        )
+        shutil.rmtree(d, ignore_errors=True)
+        raise HTTPException(409, "Your plan changed. Reload the page and try again.")
+    period = datetime.now(timezone.utc).strftime("%Y-%m")
+    try:
+        return _new_job(req, job_id, upload=name, owner_id=str(user["_id"]), plan=plan_key,
+                        quota_period=period, quota_reserved=req.clip_count)
+    except Exception:
+        _jobs.pop(job_id, None)
+        if config.MONGODB_URI and str(user["_id"]) != "test-user":
+            accounts.job_store().delete_one({"id": job_id, "owner_id": str(user["_id"])})
+        shutil.rmtree(d, ignore_errors=True)
+        accounts.refund_quota(
+            {"owner_id": str(user["_id"]), "plan": plan_key, "quota_period": period}, req.clip_count
+        )
+        raise
 
 
 @app.get("/api/jobs/{job_id}/zip")
-def download_zip(job_id: str) -> FileResponse:
+def download_zip(job_id: str, user: dict = Depends(accounts.current_user)) -> FileResponse:
     with _lock:
         job = _jobs.get(job_id)
+        if not job and config.MONGODB_URI:
+            job = accounts.job_store().find_one({"id": job_id})
+            if job:
+                job.pop("_id", None)
+                _recover_interrupted_job(job)
+                _jobs[job_id] = job
         # Copy the list: a clip can be deleted while the zip is being built.
         clips = list(job.get("clips") or []) if job else []
     if not job:
         raise HTTPException(404, "Job not found.")
+    accounts.user_job(user, job)
     d = _job_dir(job_id)
-    files = [d / Path(c["video"]).name for c in clips]
+    files = [d / Path(c["video"]).name for c in clips if str(c.get("video", "")).startswith("/media/")]
     files = [f for f in files if f.is_file()]
+    if not files and clips and os.environ.get("APP_ENV") == "production":
+        import requests
+
+        fd, tmp = tempfile.mkstemp(suffix=".zip", dir=config.DATA_DIR)
+        os.close(fd)
+        try:
+            with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as z:
+                for i, clip in enumerate(clips, 1):
+                    response = requests.get(clip["video"], stream=True, timeout=(10, 90))
+                    response.raise_for_status()
+                    with tempfile.NamedTemporaryFile(dir=config.DATA_DIR, suffix=".mp4") as item:
+                        for chunk in response.iter_content(1024 * 1024):
+                            if chunk:
+                                item.write(chunk)
+                        item.flush()
+                        z.write(item.name, f"clip_{i:02d}.mp4")
+        except Exception as exc:
+            os.unlink(tmp)
+            raise HTTPException(502, "Could not retrieve clips from cloud storage.") from exc
+        title = re.sub(r'[\\/:*?"<>|]+', "", job.get("title") or "clips").strip()[:80] or "clips"
+        return FileResponse(tmp, media_type="application/zip", filename=f"{title}.zip",
+                            background=BackgroundTask(os.unlink, tmp))
     if not files:
         raise HTTPException(409, "This video has no finished clips yet.")
     # Build in a throwaway file (outside the served /media tree) and delete it once sent,
@@ -387,177 +847,166 @@ def download_zip(job_id: str) -> FileResponse:
                         background=BackgroundTask(os.unlink, tmp))
 
 
-@app.get("/api/jobs")
-def list_jobs() -> list[dict]:
+@app.get("/api/jobs/{job_id}/clips/{index}/download")
+def download_clip(job_id: str, index: int, user: dict = Depends(accounts.current_user)) -> Response:
     with _lock:
-        return sorted(_jobs.values(), key=lambda j: -j["created"])
+        job = _jobs.get(job_id)
+        if not job and config.MONGODB_URI:
+            job = accounts.job_store().find_one({"id": job_id})
+            if job:
+                job.pop("_id", None)
+                _recover_interrupted_job(job)
+                _jobs[job_id] = job
+        if not job:
+            raise HTTPException(404, "Video job not found.")
+        accounts.user_job(user, job)
+        clips = job.get("clips") or []
+        if not 0 <= index < len(clips):
+            raise HTTPException(404, "Clip not found.")
+        clip = clips[index]
+        video_url = str(clip.get("video") or "")
+        filename = re.sub(r'[\\/:*?"<>|]+', "", str(clip.get("title") or "clip")).strip()[:80] or "clip"
+        filename += ".mp4"
+    if video_url.startswith("/media/"):
+        path = _job_dir(job_id) / Path(video_url).name
+        if not path.is_file():
+            raise HTTPException(404, "Clip media not found.")
+        return FileResponse(path, media_type="video/mp4", filename=filename)
+    if not video_url.startswith("https://res.cloudinary.com/"):
+        raise HTTPException(404, "Clip media not found.")
+    import requests
+
+    remote = None
+    try:
+        remote = requests.get(video_url, stream=True, timeout=(10, 90))
+        remote.raise_for_status()
+    except requests.RequestException as exc:
+        if remote is not None:
+            remote.close()
+        raise HTTPException(502, "Could not retrieve this clip from cloud storage.") from exc
+
+    def content():
+        try:
+            yield from remote.iter_content(chunk_size=1024 * 1024)
+        finally:
+            remote.close()
+
+    headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename, safe='')}"}
+    if remote.headers.get("content-length"):
+        headers["Content-Length"] = remote.headers["content-length"]
+    return StreamingResponse(content(), media_type="video/mp4", headers=headers)
+
+
+@app.get("/api/jobs")
+def list_jobs(user: dict = Depends(accounts.current_user)) -> list[dict]:
+    if config.MONGODB_URI and str(user["_id"]) != "test-user":
+        saved = list(accounts.job_store().find(
+            {} if user.get("role") == "admin" else {"owner_id": str(user["_id"])}
+        ))
+        with _lock:
+            for job in saved:
+                job_id = job["id"]
+                if job_id in _jobs:
+                    continue
+                job.pop("_id", None)
+                _recover_interrupted_job(job)
+                _jobs[job_id] = job
+    visible = [j for j in _jobs.values() if user.get("role") == "admin" or j.get("owner_id") == str(user["_id"])]
+    return sorted(visible, key=lambda j: -j["created"])
 
 
 @app.get("/api/jobs/{job_id}")
-def get_job(job_id: str) -> dict:
+def get_job(job_id: str, user: dict = Depends(accounts.current_user)) -> dict:
     with _lock:
         job = _jobs.get(job_id)
+        if not job and config.MONGODB_URI:
+            job = accounts.job_store().find_one({"id": job_id})
+            if job:
+                job.pop("_id", None)
+                _recover_interrupted_job(job)
+                _jobs[job_id] = job
     if not job:
         raise HTTPException(404, "Job not found.")
+    accounts.user_job(user, job)
     return job
 
 
 @app.delete("/api/jobs/{job_id}")
-def delete_job(job_id: str) -> dict:
+def delete_job(job_id: str, user: dict = Depends(accounts.current_user)) -> dict:
     with _lock:
         job = _jobs.get(job_id)
         if not job:
             raise HTTPException(404, "Job not found.")
+        accounts.user_job(user, job)
         if job["status"] in ("queued", "running"):
             raise HTTPException(409, "This video is still processing.")
-        if any((c.get("youtube") or {}).get("status") in ("queued", "uploading") for c in job.get("clips") or []):
-            raise HTTPException(409, "A clip from this video is being posted to YouTube. Wait for it to finish.")
+        clips = list(job.get("clips") or [])
+    _delete_cloudinary_assets(clips)
+    with _lock:
+        if _jobs.get(job_id) is not job:
+            raise HTTPException(409, "This video changed while it was being deleted. Please retry.")
         del _jobs[job_id]
+        if config.MONGODB_URI and str(user["_id"]) != "test-user":
+            accounts.job_store().delete_one({"id": job_id, "owner_id": str(user["_id"])})
     shutil.rmtree(_job_dir(job_id), ignore_errors=True)
     return {"ok": True}
 
 
 @app.delete("/api/jobs/{job_id}/clips/{index}")
-def delete_clip(job_id: str, index: int) -> dict:
+def delete_clip(job_id: str, index: int, user: dict = Depends(accounts.current_user)) -> dict:
     with _lock:
         job = _jobs.get(job_id)
         if not job:
             raise HTTPException(404, "Job not found.")
+        accounts.user_job(user, job)
         clips = job.get("clips") or []
         if not 0 <= index < len(clips):
             raise HTTPException(404, "Clip not found.")
         if job["status"] in ("queued", "running"):
             raise HTTPException(409, "This video is still processing.")
-        # Uploads find their clip by position, so removing one would point them at the wrong clip.
-        if any((c.get("youtube") or {}).get("status") in ("queued", "uploading") for c in clips):
-            raise HTTPException(409, "A clip from this video is being posted to YouTube. Wait for it to finish.")
-        clip = clips.pop(index)
+        clip = clips[index]
+    _delete_cloudinary_assets([clip])
+    with _lock:
+        current = _jobs.get(job_id)
+        if current is not job or index >= len(job.get("clips") or []) or job["clips"][index].get("video") != clip.get("video"):
+            raise HTTPException(409, "This clip changed while it was being deleted. Please retry.")
+        clips = job.get("clips") or []
+        clips.pop(index)
         _save(job)
     d = _job_dir(job_id)
     for url in (clip.get("video"), clip.get("thumb")):
-        if url:
+        if url and str(url).startswith("/media/"):
             (d / Path(url).name).unlink(missing_ok=True)
     return {"ok": True}
 
 
-# ---------- YouTube ----------
-
-class PublishRequest(BaseModel):
-    title: str = Field(max_length=500)
-    description: str = Field(default="", max_length=10000)
-    hashtags: list[str] = Field(default_factory=list, max_length=100)
-    privacy: str = "public"
-    publish_at: datetime | None = None
-    made_for_kids: bool = False
-    notify_subscribers: bool = True
-    add_source_link: bool = False
-    # The clip's video path when the dialog opened. Clips are addressed by position, so if one
-    # was deleted meanwhile this catches a post landing on a different clip.
-    clip_video: str | None = None
-
-
-@app.get("/api/youtube")
-def youtube_status() -> dict:
-    return youtube.status()
-
-
-@app.get("/api/youtube/connect")
-def youtube_connect(request: Request) -> RedirectResponse:
-    # Google documents the desktop loopback redirect as http://127.0.0.1:port with
-    # no path, so Google sends the user back to this app's root URL (see index()).
-    redirect = str(request.base_url)
-    try:
-        return RedirectResponse(youtube.start_auth(redirect), status_code=307)
-    except youtube.NotConfigured as exc:
-        raise HTTPException(400, str(exc)) from None
-
-
-@app.post("/api/youtube/disconnect")
-def youtube_disconnect() -> dict:
-    youtube.disconnect()
-    return {"ok": True}
-
-
-@app.post("/api/jobs/{job_id}/clips/{index}/youtube")
-def publish_clip(job_id: str, index: int, req: PublishRequest) -> dict:
-    if not youtube.status()["connected"]:
-        raise HTTPException(409, "Connect YouTube first.")
-    with _lock:
-        job = _jobs.get(job_id)
-        clips = (job or {}).get("clips") or []
-        if not job or not 0 <= index < len(clips):
-            raise HTTPException(404, "Clip not found.")
-        clip = clips[index]
-        if req.clip_video is not None and req.clip_video != clip.get("video"):
-            raise HTTPException(409, "This clip changed since you opened it (another clip was deleted). Reload the page and try again.")
-        if (clip.get("youtube") or {}).get("status") in ("queued", "uploading"):
-            raise HTTPException(409, "This clip is already being posted.")
-        source_url = job.get("url") if req.add_source_link and _YT.match(job.get("url") or "") else None
-        try:
-            meta = youtube.build_metadata(
-                title=req.title, description=req.description, hashtags=req.hashtags, privacy=req.privacy,
-                publish_at=req.publish_at, made_for_kids=req.made_for_kids, source_url=source_url,
-            )
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from None
-        clip["youtube"] = {"status": "queued", "progress": 0}
-        _save(job)
-    _upload_pool.submit(_publish, job_id, index, meta, req.notify_subscribers)
-    return clip["youtube"]
-
-
-def _set_youtube(job_id: str, index: int, value: dict) -> None:
-    with _lock:
-        job = _jobs.get(job_id)
-        if job and index < len(job.get("clips") or []):
-            job["clips"][index]["youtube"] = value
-            _save(job)
-
-
-def _publish(job_id: str, index: int, meta: dict, notify: bool) -> None:
-    with _lock:
-        job = _jobs.get(job_id)
-        clip = job["clips"][index] if job else None
-    if not clip:
-        return
-    path = _job_dir(job_id) / Path(clip["video"]).name
-    last = {"pct": -10}
-
-    def progress(pct: int) -> None:
-        if pct - last["pct"] >= 5 or pct == 100:  # don't rewrite job.json for every chunk
-            last["pct"] = pct
-            _set_youtube(job_id, index, {"status": "uploading", "progress": pct})
-
-    try:
-        _set_youtube(job_id, index, {"status": "uploading", "progress": 0})
-        video_id = youtube.upload(path, meta, notify_subscribers=notify, progress=progress)
-        result = {"status": "done", "video_id": video_id, "url": f"https://youtu.be/{video_id}"}
-        if meta.get("status", {}).get("publishAt"):
-            result["scheduled_for"] = meta["status"]["publishAt"]
-        else:
-            result["privacy"] = meta.get("status", {}).get("privacyStatus")
-        _set_youtube(job_id, index, result)
-    except youtube.UploadError as exc:
-        _set_youtube(job_id, index, {"status": "error", "error": str(exc)})
-    except Exception as exc:
-        traceback.print_exc()
-        _set_youtube(job_id, index, {"status": "error", "error": f"Upload failed: {exc}"[:300]})
+@app.get("/media/{job_id}/{filename}")
+def media_file(job_id: str, filename: str, user: dict = Depends(accounts.current_user)) -> FileResponse:
+    job = _jobs.get(job_id)
+    if not job and config.MONGODB_URI:
+        job = accounts.job_store().find_one({"id": job_id})
+        if job:
+            job.pop("_id", None)
+            _recover_interrupted_job(job)
+            _jobs[job_id] = job
+    accounts.user_job(user, job)
+    if Path(filename).name != filename:
+        raise HTTPException(404, "Media not found.")
+    path = _job_dir(job_id) / filename
+    if not path.is_file():
+        raise HTTPException(404, "Media not found.")
+    return FileResponse(path)
 
 
 app.mount("/fonts", StaticFiles(directory=render.FONTS_DIR), name="fonts")
-app.mount("/media", StaticFiles(directory=config.JOBS_DIR), name="media")
 
 
 @app.get("/")
-def index(state: str | None = None, code: str | None = None, error: str | None = None):
-    # Google sends the browser back here after the YouTube sign-in.
-    if error and state:
-        reason = "access_denied" if error == "access_denied" else "failed"  # never echo the raw value
-        return RedirectResponse(f"/?youtube=error&reason={reason}", status_code=303)
-    if state and code:
-        try:
-            youtube.finish_auth(state, code)
-        except youtube.AuthError:
-            return RedirectResponse("/?youtube=error&reason=expired", status_code=303)
-        return RedirectResponse("/?youtube=connected", status_code=303)
+def index():
     return FileResponse(config.STATIC_DIR / "index.html")
+
+
+@app.get("/admin")
+@app.get("/admin/login")
+def admin_page() -> FileResponse:
+    return FileResponse(config.STATIC_DIR / "admin.html")

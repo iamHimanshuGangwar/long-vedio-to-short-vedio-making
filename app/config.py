@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # override: the app's .env wins over machine-wide variables (e.g. an older OLLAMA_MODELS)
 load_dotenv(ROOT / ".env", override=True)
 
-DATA_DIR = Path(os.environ.get("CLIPSMITH_DATA_DIR") or ROOT / "data")
+DATA_DIR = Path(os.environ.get("CLIPSMITH_DATA_DIR") or ("/tmp/reelcraft" if os.environ.get("APP_ENV") == "production" else ROOT / "data"))
 JOBS_DIR = DATA_DIR / "jobs"
 MODELS_DIR = DATA_DIR / "models"
 STATIC_DIR = ROOT / "static"
@@ -22,7 +22,8 @@ os.environ.setdefault("HF_HOME", str(MODELS_DIR / "hf"))
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5-5")
-WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
+WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "tiny")
+MAX_SOURCE_MINUTES = max(1, min(10, int(os.environ.get("MAX_SOURCE_MINUTES", "5"))))
 
 OUT_W, OUT_H = 1080, 1920
 MAX_VIDEO_HOURS = 4
@@ -34,6 +35,18 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3.5:4b")
 OLLAMA_EXE = os.environ.get("OLLAMA_EXE", "") or shutil.which("ollama") or ""
 OLLAMA_MODELS_DIR = os.environ.get("OLLAMA_MODELS", "")
 OLLAMA_CTX = int(os.environ.get("OLLAMA_CTX", "8192"))
+
+MONGODB_URI = os.environ.get("MONGODB_URI", "")
+MONGODB_DATABASE = os.environ.get("MONGODB_DATABASE", "reelcraft")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+BLOCKED_EMAIL_DOMAINS = os.environ.get("BLOCKED_EMAIL_DOMAINS", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL", "")
+RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
+RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
 
 
 def ai_provider() -> str | None:

@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app import main
+from app import accounts, main
 
 YT = "https://www.youtube.com/watch?v=abc123"
 
@@ -31,6 +31,41 @@ def test_create_job_queues_it(client):
     assert job["status"] == "queued" and job["options"]["clip_count"] == 3
     assert len(client.submitted) == 1
     assert client.get(f"/api/jobs/{job['id']}").json()["id"] == job["id"]
+
+
+def test_free_plan_forces_free_features_on_the_server(client, monkeypatch):
+    free_user = {
+        "_id": "test-user", "email": "free@example.com", "role": "user", "plan": "free",
+        "used": 0, "cycle": "",
+    }
+    monkeypatch.setitem(client.app.dependency_overrides, accounts.current_user, lambda: free_user)
+    response = client.post("/api/jobs", json={
+        "url": YT, "clip_count": 8, "min_len": 15, "max_len": 30, "style": "green",
+        "layout": "fit", "hook": False, "prompt": "premium feature", "start_time": 10,
+        "end_time": 30, "aspect": "16:9", "trim_pauses": False,
+    })
+
+    assert response.status_code == 200
+    options = response.json()["options"]
+    assert options == {
+        "clip_count": 1, "min_len": 15, "max_len": 30, "style": "yellow",
+        "layout": "auto", "hook": True, "prompt": "", "start_time": None,
+        "end_time": None, "aspect": "9:16", "trim_pauses": True,
+    }
+
+
+def test_free_plan_rejects_clip_lengths_above_30_seconds(client, monkeypatch):
+    free_user = {
+        "_id": "test-user", "email": "free@example.com", "role": "user", "plan": "free",
+        "used": 0, "cycle": "",
+    }
+    monkeypatch.setitem(client.app.dependency_overrides, accounts.current_user, lambda: free_user)
+
+    response = client.post("/api/jobs", json={"url": YT, "min_len": 15, "max_len": 31})
+
+    assert response.status_code == 403
+    assert "15 to 30 seconds" in response.json()["detail"]
+    assert client.submitted == []
 
 
 @pytest.mark.parametrize("body, message", [
@@ -93,6 +128,17 @@ def test_delete_one_clip_removes_it_and_its_files(client):
     assert (d / "clip_01.mp4").exists()
 
 
+def test_clip_download_uses_an_owned_attachment_response(client):
+    job_id, _ = _finished_job_with_clips(client, 1)
+
+    response = client.get(f"/api/jobs/{job_id}/clips/0/download")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "video/mp4"
+    assert response.headers["content-disposition"].startswith("attachment;")
+    assert response.content == b"v"
+
+
 def test_delete_clip_out_of_range_is_404(client):
     job_id, _ = _finished_job_with_clips(client, 1)
     assert client.delete(f"/api/jobs/{job_id}/clips/5").status_code == 404
@@ -102,11 +148,3 @@ def test_cannot_delete_clip_while_job_runs(client):
     job_id, _ = _finished_job_with_clips(client)
     main._jobs[job_id]["status"] = "running"
     assert client.delete(f"/api/jobs/{job_id}/clips/0").status_code == 409
-
-
-def test_cannot_delete_clip_while_any_clip_uploads(client):
-    # uploads track their clip by position, so a removal would shift them onto the wrong clip
-    job_id, _ = _finished_job_with_clips(client)
-    main._jobs[job_id]["clips"][2]["youtube"] = {"status": "uploading", "progress": 10}
-    assert client.delete(f"/api/jobs/{job_id}/clips/0").status_code == 409
-    assert len(main._jobs[job_id]["clips"]) == 3

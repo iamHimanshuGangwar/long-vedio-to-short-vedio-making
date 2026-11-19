@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -44,7 +45,9 @@ def _ydl_base() -> dict:
     return opts
 
 
-def download(url: str, workdir: Path, progress: Progress) -> Source:
+def download(
+    url: str, workdir: Path, progress: Progress, max_duration_seconds: int | None = None
+) -> Source:
     progress(2, "Reading video details")
     with yt_dlp.YoutubeDL(_ydl_base()) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -52,6 +55,8 @@ def download(url: str, workdir: Path, progress: Progress) -> Source:
     duration = float(info.get("duration") or 0)
     if duration and duration > config.MAX_VIDEO_HOURS * 3600:
         raise ValueError(f"Video is longer than {config.MAX_VIDEO_HOURS} hours.")
+    if duration and max_duration_seconds is not None and duration > max_duration_seconds:
+        raise ValueError(f"This plan supports source videos up to {max_duration_seconds // 60} minutes.")
     if info.get("is_live"):
         raise ValueError("Live streams can't be clipped until they finish.")
 
@@ -137,19 +142,37 @@ def _fetch_captions(url: str, workdir: Path, track: str) -> list[Word]:
     return parse_json3(sub) if sub.exists() else []
 
 
-def from_local_file(path: Path, workdir: Path, progress: Progress, title: str | None = None) -> Source:
+def from_local_file(
+    path: Path,
+    workdir: Path,
+    progress: Progress,
+    title: str | None = None,
+    max_duration_seconds: int | None = None,
+) -> Source:
     """An uploaded video: no captions to fetch, so transcribe it with Whisper."""
     progress(2, "Reading video details")
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
-        capture_output=True, text=True,
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=width,height",
+         "-of", "json", str(path)], capture_output=True, text=True,
     )
+    if out.returncode:
+        detail = out.stderr.strip()
+        raise ValueError(f"Could not inspect the uploaded video: {detail or 'ffprobe failed.'}")
     try:
-        duration = float(out.stdout.strip())
-    except ValueError:
+        details = json.loads(out.stdout)
+        duration = float(details["format"]["duration"])
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
         raise ValueError("That file doesn't look like a video ffmpeg can read.") from None
+    if os.environ.get("APP_ENV") == "production":
+        video = next((stream for stream in details.get("streams", []) if "width" in stream and "height" in stream), None)
+        if not video:
+            raise ValueError("No video track was found in the uploaded file.")
+        if int(video["width"]) * int(video["height"]) > 1920 * 1080:
+            raise ValueError("For stable processing on the free server, upload video at 1080p or lower.")
     if duration > config.MAX_VIDEO_HOURS * 3600:
         raise ValueError(f"Video is longer than {config.MAX_VIDEO_HOURS} hours.")
+    if max_duration_seconds is not None and duration > max_duration_seconds:
+        raise ValueError(f"This plan supports source videos up to {max_duration_seconds // 60} minutes.")
 
     progress(26, "Transcribing audio")
     words = whisper_transcribe(path, workdir, progress)
@@ -226,14 +249,42 @@ def read_wav_16k(path: Path) -> np.ndarray:
     return np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0
 
 
+def _has_audio_track(video_path: Path) -> bool:
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_type",
+         "-of", "csv=p=0", str(video_path)],
+        capture_output=True, text=True,
+    )
+    if probe.returncode:
+        detail = probe.stderr.strip()
+        raise RuntimeError(f"Could not inspect the video's audio track: {detail or 'ffprobe failed.'}")
+    return bool(probe.stdout.strip())
+
+
 def whisper_transcribe(video_path: Path, workdir: Path, progress: Progress) -> list[Word]:
+    if not _has_audio_track(video_path):
+        raise ValueError(
+            "This video has no audio track. ReelCraft AI needs audio to transcribe speech and find clip moments. "
+            "Please upload a video with audible speech."
+        )
+
+    if config.GROQ_API_KEY:
+        return _groq_transcribe(video_path, workdir, progress)
+    if os.environ.get("APP_ENV") == "production":
+        raise RuntimeError("Audio transcription is not configured. Add GROQ_API_KEY in the deployment environment.")
+
     from faster_whisper import WhisperModel
 
     wav = workdir / "audio.wav"
-    subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(video_path), "-vn", "-ac", "1", "-ar", "16000", str(wav)],
-        check=True,
+    extracted = subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-threads", "1", "-i", str(video_path),
+         "-vn", "-ac", "1", "-ar", "16000", str(wav)],
+        capture_output=True, text=True,
     )
+    if extracted.returncode:
+        wav.unlink(missing_ok=True)
+        detail = extracted.stderr.strip()
+        raise RuntimeError(f"Could not extract audio from the video: {detail or 'ffmpeg failed.'}")
     model = WhisperModel(
         config.WHISPER_MODEL, device="cpu", compute_type="int8", download_root=str(config.MODELS_DIR / "whisper")
     )
@@ -249,3 +300,39 @@ def whisper_transcribe(video_path: Path, workdir: Path, progress: Progress) -> l
         progress(26 + 14 * min(seg.end / total, 1), "Transcribing audio")
     wav.unlink(missing_ok=True)
     return words
+
+
+def _groq_transcribe(video_path: Path, workdir: Path, progress: Progress) -> list[Word]:
+    from groq import Groq
+
+    audio = workdir / "audio.mp3"
+    extracted = subprocess.run(
+        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-threads", "1", "-i", str(video_path),
+         "-vn", "-ac", "1", "-ar", "16000", "-b:a", "48k", str(audio)],
+        capture_output=True, text=True,
+    )
+    if extracted.returncode:
+        audio.unlink(missing_ok=True)
+        detail = extracted.stderr.strip()
+        raise RuntimeError(f"Could not extract audio from the video: {detail or 'ffmpeg failed.'}")
+    try:
+        if audio.stat().st_size > 24 * 1024 * 1024:
+            raise ValueError("The audio is too large for the free transcription service. Use a shorter video.")
+        progress(30, "Transcribing audio with Groq")
+        with audio.open("rb") as stream:
+            result = Groq(api_key=config.GROQ_API_KEY).audio.transcriptions.create(
+                file=(audio.name, stream),
+                model=os.environ.get("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo"),
+                response_format="verbose_json",
+                timestamp_granularities=["word"],
+            )
+        words = [
+            Word(str(item.word).strip(), float(item.start), float(item.end))
+            for item in (getattr(result, "words", None) or [])
+            if str(getattr(item, "word", "")).strip()
+        ]
+        if not words:
+            raise RuntimeError("The transcription service returned no word timestamps.")
+        return words
+    finally:
+        audio.unlink(missing_ok=True)

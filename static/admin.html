@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReelCraft AI — Admin</title>
+<style>
+  :root { color-scheme: dark; --bg:#0b1020;--panel:#111a2b;--panel2:#192438;--line:#27344a;--text:#eef3fb;--muted:#a4b1c5;--blue:#78a9ff;--bad:#ff8a8a }
+  * { box-sizing:border-box } body { margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,sans-serif }
+  main { width:min(1040px,calc(100% - 32px));margin:40px auto } header { display:flex;justify-content:space-between;align-items:center;margin-bottom:24px }
+  h1 { font-size:26px;margin:0 } h2 { font-size:19px;margin:0 0 14px } .card { background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin:16px 0 }
+  label { display:block;color:var(--muted);font-size:13px;margin:8px 0 4px } input,select,button { font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px }
+  input,select { width:100% } button { cursor:pointer;font-weight:650 } button.primary { background:var(--blue);color:#09172d;border:0 } button.danger { color:var(--bad) }
+  .row { display:flex;gap:8px;align-items:end;flex-wrap:wrap } .row>div { flex:1;min-width:180px }
+  .error { color:var(--bad);white-space:pre-wrap } .muted { color:var(--muted) } table { width:100%;border-collapse:collapse;display:block;overflow:auto;white-space:nowrap }
+  th,td { text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle } th { color:var(--muted);font-size:12px;text-transform:uppercase }
+  td button { margin:2px } .user-plan { min-width:125px } [hidden] { display:none!important } a { color:var(--blue) }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>ReelCraft AI · Admin</h1><a href="/">Back to app</a></header>
+  <form id="login" class="card">
+    <h2>Administrator sign in</h2>
+    <p class="muted">Use the administrator credentials configured in the server environment.</p>
+    <label for="email">Admin email</label><input id="email" type="email" autocomplete="username" required>
+    <label for="password">Admin password</label><input id="password" type="password" autocomplete="current-password" required>
+    <p id="login-error" class="error" role="alert"></p>
+    <button class="primary" type="submit">Sign in</button>
+  </form>
+  <section id="panel" hidden>
+    <div class="card">
+      <h2>Server video limit</h2>
+      <p class="muted">On Render Free this is intentionally capped at 10 minutes to reduce memory/time-out risk.</p>
+      <div class="row"><div><label for="max-minutes">Maximum source duration (minutes)</label><input id="max-minutes" type="number" min="1" max="10" value="5"></div><button id="save-limit" class="primary">Save limit</button></div>
+      <p id="limit-message" class="muted" role="status"></p>
+    </div>
+    <div class="card">
+      <h2>Accounts</h2><p id="user-message" class="muted" role="status"></p>
+      <table><thead><tr><th>Email</th><th>Plan</th><th>Usage</th><th>Status</th><th>Actions</th></tr></thead><tbody id="users"></tbody></table>
+    </div>
+  </section>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+async function api(url, options = {}) {
+  const res = await fetch(url, options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
+  return data;
+}
+function showPanel() {
+  $("#login").hidden = true;
+  $("#panel").hidden = false;
+  loadUsers();
+  api("/api/status").then((status) => { $("#max-minutes").value = status.max_source_minutes; }).catch((e) => { $("#limit-message").textContent = e.message; });
+}
+async function loadUsers() {
+  try {
+    const users = await api("/api/admin/users");
+    const body = $("#users");
+    body.replaceChildren();
+    for (const user of users) {
+      const tr = document.createElement("tr");
+      const email = document.createElement("td"); email.textContent = user.email; tr.appendChild(email);
+      const planCell = document.createElement("td");
+      const select = document.createElement("select"); select.className = "user-plan";
+      for (const plan of ["free", "normal", "premium", "gold"]) { const option = document.createElement("option"); option.value = plan; option.textContent = plan; option.selected = user.plan === plan; select.appendChild(option); }
+      planCell.appendChild(select); tr.appendChild(planCell);
+      const usage = document.createElement("td"); usage.textContent = user.quota === null ? `${user.used} · unlimited` : `${user.used}/${user.quota} (this month)`; tr.appendChild(usage);
+      const state = document.createElement("td"); state.textContent = user.banned ? "Banned" : "Active"; tr.appendChild(state);
+      const actions = document.createElement("td");
+      const update = document.createElement("button"); update.textContent = "Set plan"; update.addEventListener("click", async () => {
+        try { await api(`/api/admin/users/${encodeURIComponent(user.email)}/plan`, { method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify({plan:select.value,billing:user.billing || "monthly"}) }); await loadUsers(); }
+        catch (e) { $("#user-message").textContent = e.message; }
+      });
+      const reset = document.createElement("button"); reset.textContent = "Reset quota"; reset.addEventListener("click", async () => {
+        try { await api(`/api/admin/users/${encodeURIComponent(user.email)}/reset`, {method:"POST"}); await loadUsers(); }
+        catch (e) { $("#user-message").textContent = e.message; }
+      });
+      const ban = document.createElement("button"); ban.className = "danger"; ban.textContent = user.banned ? "Unban" : "Ban"; ban.addEventListener("click", async () => {
+        try { await api(`/api/admin/users/${encodeURIComponent(user.email)}/ban`, {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({banned:!user.banned})}); await loadUsers(); }
+        catch (e) { $("#user-message").textContent = e.message; }
+      });
+      actions.append(update, reset, ban); tr.appendChild(actions); body.appendChild(tr);
+    }
+    $("#user-message").textContent = `${users.length} accounts`;
+  } catch (e) { $("#user-message").textContent = e.message; }
+}
+$("#login").addEventListener("submit", async (event) => {
+  event.preventDefault(); $("#login-error").textContent = "";
+  try { await api("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:$("#email").value,password:$("#password").value})}); $("#password").value=""; showPanel(); }
+  catch (e) { $("#login-error").textContent = e.message; }
+});
+$("#save-limit").addEventListener("click", async () => {
+  try { const result = await api("/api/admin/settings/max-source-minutes",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_source_minutes:Number($("#max-minutes").value)})}); $("#limit-message").textContent = `Limit set to ${result.max_source_minutes} minutes.`; }
+  catch(e) { $("#limit-message").textContent = e.message; }
+});
+api("/api/auth/me").then((user) => { if (user?.role === "admin") showPanel(); }).catch(() => {});
+</script>
+</body>
+</html>

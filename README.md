@@ -1,41 +1,19 @@
-# Clipsmith
+# ReelCraft AI
 
-**A free, open-source alternative to OpusClip. Turn one long YouTube video into a batch of ready-to-post Shorts, on your own laptop.**
+**An open-source video clipping studio. Turn a long video into captioned vertical clips with ReelCraft AI.**
 
 [![tests](https://github.com/AbdulSamad94/clipsmith/actions/workflows/tests.yml/badge.svg)](https://github.com/AbdulSamad94/clipsmith/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
-![Runs offline](https://img.shields.io/badge/runs-offline-brightgreen)
-![No API key](https://img.shields.io/badge/API%20key-not%20needed-brightgreen)
-![No GPU](https://img.shields.io/badge/GPU-not%20needed-brightgreen)
 [![GitHub stars](https://img.shields.io/github/stars/AbdulSamad94/clipsmith?style=social)](https://github.com/AbdulSamad94/clipsmith/stargazers)
 
-Paste a YouTube link. Clipsmith finds the best 30–60 second moments, crops them to vertical 9:16 around the speaker, burns in animated word-by-word captions, and ranks them by how likely they are to hold a viewer.
+Paste a YouTube link or upload a video. ReelCraft AI finds the best 30–60 second moments, crops them to vertical 9:16 around the speaker, burns in animated word-by-word captions, and ranks them by how likely they are to hold a viewer.
 
-- **Free and unlimited.** No credits, no monthly plan, no watermark, no clips that expire after 3 days.
-- **Runs offline.** Moment picking uses a local AI model (Qwen via Ollama). No API key, no account, your videos never leave your computer.
-- **Works on an ordinary laptop.** No GPU needed; it was built and tested on a 4-core Intel laptop CPU.
+- **Google sign-in** with Free, Normal, Premium and Gold quotas and plan-based feature access.
+- **Cloud-ready processing** using Groq transcription, Gemini moment selection, MongoDB account data and Cloudinary clip storage.
+- **Download clips** individually or as a ZIP; YouTube publishing is not included.
 
-> Not affiliated with OpusClip. "OpusClip" is mentioned only to describe what this project is an alternative to.
-
-![Clipsmith screenshot](docs/ss.png)
-
-## Clipsmith vs OpusClip
-
-| | Clipsmith | OpusClip Free | OpusClip paid |
-|---|---|---|---|
-| Price | **Free forever** | $0 | from $15/month |
-| Clips per month | **Unlimited** | 60 credits | 150+ credits |
-| Watermark | **None** | Yes | No |
-| Clips expire | **Never** | After 3 days | After 30 days+ |
-| Runs on your computer, offline | **Yes** | No | No |
-| Your videos stay private | **Yes** | Uploaded | Uploaded |
-| Open source | **Yes (MIT)** | No | No |
-| AI picks + viral score | Yes | No score | Yes |
-| Animated captions + 9:16 reframe | Yes | Yes | Yes |
-| B-roll, scheduler, team features | Not yet | No | Yes |
-
-*OpusClip details from its public pricing page, November 2026.*
+![ReelCraft AI screenshot](docs/ss.png)
 
 ## What it does
 
@@ -43,7 +21,7 @@ Paste a YouTube link. Clipsmith finds the best 30–60 second moments, crops the
 2. **Picks the moments** that open strong, stand on their own and end on a complete thought, and gives each a viral score, a title, an on-screen hook, a caption and hashtags.
 3. **Reframes** to 9:16, following the speaker's face. Wide shots get the full frame over a blurred background instead.
 4. **Captions** every word as it's spoken, in one of three styles.
-5. **Exports** MP4s you can download, or post and schedule straight to YouTube.
+5. **Exports** MP4s you can download individually or together as a ZIP.
 
 ## Install
 
@@ -60,7 +38,7 @@ You need **Python 3.10+**, **ffmpeg** and, for AI moment picking, **Ollama**.
 
 Node.js works instead of Deno if you already have it.
 
-Clipsmith needs FFmpeg's `ass` filter (libass) to render captions. Homebrew's `ffmpeg-full` is keg-only, so on macOS start Clipsmith with its binaries first:
+ReelCraft AI needs FFmpeg's `ass` filter (libass) to render captions. Homebrew's `ffmpeg-full` is keg-only, so on macOS start ReelCraft AI with its binaries first:
 
 ```
 PATH="$(brew --prefix ffmpeg-full)/bin:$PATH" ./run.sh
@@ -72,7 +50,7 @@ PATH="$(brew --prefix ffmpeg-full)/bin:$PATH" ./run.sh
 ollama pull qwen3.5:4b
 ```
 
-### 3. Set up Clipsmith
+### 3. Set up ReelCraft AI
 
 ```
 git clone https://github.com/AbdulSamad94/clipsmith.git
@@ -82,29 +60,55 @@ cd clipsmith
 - **Windows:** double-click `setup.bat`
 - **macOS / Linux:** `./setup.sh`
 
-## Run
+## Run locally
 
 - **Windows:** double-click `run.bat`
 - **macOS / Linux:** `./run.sh`
 
-Then open **http://127.0.0.1:8765**, paste a YouTube link (or drop in a video file) and click **Get clips**.
+The account and plan features still require MongoDB, Google OAuth and the provider credentials below, even when running locally. Copy `.env.example` to `.env`, configure those services, then open **http://127.0.0.1:8765** and sign in with Google.
+
+## Deploy on Render Free
+
+The repository includes a Docker-based Render Blueprint in [`render.yaml`](./render.yaml). Create free accounts/services for Render, MongoDB Atlas, Google OAuth, Groq, Gemini and Cloudinary, then deploy the Blueprint and enter its environment secrets in Render. The Blueprint intentionally marks credentials as secret inputs; do not commit a real `.env` or paste secrets into source files.
+
+Configure these values in Render:
+
+| Variable | Purpose |
+|---|---|
+| `MONGODB_URI` | MongoDB Atlas connection URI for account, quota, plan and job metadata |
+| `GOOGLE_CLIENT_ID` | Google OAuth web-client ID; authorize the deployed Render/custom-domain origin |
+| `SESSION_SECRET` | Random session-signing value at least 32 characters long (for example, generate with `openssl rand -hex 32`) |
+| `ADMIN_PASSWORD` | Unique administrator password at least 16 characters long; rotate any password previously shared in chat |
+| `GEMINI_API_KEY` | Gemini API key for AI moment selection |
+| `GROQ_API_KEY` | Groq API key for Whisper-compatible transcription |
+| `CLOUDINARY_URL` | Cloudinary URL used for authenticated clip storage |
+| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` | Razorpay Checkout credentials; start with test credentials |
+
+`ADMIN_EMAIL` is prefilled in the Blueprint; change it if a different administrator should be used. The Admin Panel is available at `/admin`. Regular accounts are created only after verified Google sign-in. Razorpay upgrades are activated only after the backend verifies the payment signature and confirms/captures the payment with Razorpay.
+
+### Plans and hosting limits
+
+| Plan | Price / month | Price / year | Allowance | Plan source limit |
+|---|---:|---:|---:|---:|
+| Free | ₹0 | ₹0 | 1 clip/month (15–30 seconds) | 10 minutes |
+| Normal | ₹49 | ₹449 | 32 clips/month | 30 minutes |
+| Premium | ₹99 | ₹899 | 90 clips/month | 90 minutes |
+| Gold | ₹149 | ₹1,399 | Unlimited clips/month | 300 minutes |
+
+On Render Free, a server-wide source-video cap applies to every plan: it defaults to **5 minutes** and the Admin Panel can raise it only up to **10 minutes**. The effective limit is the lower of that server cap and the account plan's limit. The service also limits uploads to 500 MiB and source video resolution to 1080p, processes one video at a time, and stores temporary media in `/tmp`. Render Free has limited memory, CPU, temporary storage and availability; these safeguards reduce resource pressure but cannot guarantee every render will finish without a timeout. Temporary files may be lost when the service restarts; interrupted jobs are marked failed and their unrendered clip allowance is refunded. Account quotas and job metadata are held in MongoDB, and generated clips in Cloudinary. Hosting stays within provider free tiers only while usage remains within their current free-tier quotas; payment processing may also incur fees.
 
 ## Using it
 
 - **Clip settings:** pick the number of clips, the clip length and the aspect ratio (9:16, 1:1 or 16:9). Choose a caption style (each one shows a live preview; besides the original three there are Comic, Impact, Tall and a "Build-up" style where words appear one by one as they are spoken) and framing, and switch the opening hook text and pause/"uh" removal on or off.
 - **Focus (optional):** describe what the clips should be about, or limit them to part of the video with **From** and **To** (like `12:30`).
 - **Progress:** each video shows three steps (get the video, pick the best moments, cut and caption) with what's happening right now. Finished clips appear while the rest are still rendering.
-- **Your clips:** each clip shows its rank, length, score, the hook it opens with and why it was picked. **Download** it, **Post to YouTube**, or open the **⋯** menu to copy the caption, post again or delete the clip. Fold any clip into one line with the arrow; posted clips fold by themselves. Older videos start folded too.
+- **Your clips:** each clip shows its rank, length, score, the hook it opens with and why it was picked. Download it, copy its caption from the **⋯** menu, or delete it. Older videos start folded.
 
 The page works with a keyboard and a screen reader: every control has a label and a visible focus ring, and progress and upload changes are announced.
 
 ## How long it takes
 
 On a 4-core laptop CPU, a 12-minute video takes about **10 minutes**: a few minutes for the AI to read it, then about 1–3 minutes per clip to render. Longer videos take proportionally longer. Fewer clips means faster results.
-
-## Post straight to YouTube
-
-Connect your channel once and every clip gets a **Post to YouTube** button: the AI's title, description and hashtags are filled in, and you can post now or **schedule** it (YouTube publishes it at that time, even if your computer is off). Setup takes about 5 minutes with your own free Google app: see **[docs/youtube-setup.md](docs/youtube-setup.md)**.
 
 ## Choosing the AI
 
@@ -123,18 +127,17 @@ On a machine with more RAM or a GPU, try a bigger local model for better picks, 
 
 - The small local model sometimes gets facts or numbers wrong in titles. **Check titles before posting.**
 - Face tracking is basic (OpenCV). Fast camera cuts can make the crop lag.
-- Posting is built in for YouTube only; for TikTok and Reels, download the MP4 and upload it yourself.
+- Render Free's shared source-duration cap is lower than the longer plan limits; see the deployment notes above.
 
 ## Roadmap
 
 - [x] Filler word and silence removal
 - [x] "Prompt to clip": describe the moment you want
-- [x] Post and schedule directly to YouTube
 - [ ] Edit clip start/end and caption text before export
 - [ ] Keyword and emoji highlights in captions
 - [ ] Brand template (logo, fonts, colours)
 
-Contributions are welcome! **Designers especially:** UI/UX ideas are wanted, see [issue #24](https://github.com/AbdulSamad94/clipsmith/issues/24). See [CONTRIBUTING.md](CONTRIBUTING.md) and the [`good first issue`](https://github.com/AbdulSamad94/clipsmith/labels/good%20first%20issue) label. If Clipsmith saves you money, a ⭐ helps other people find it.
+Contributions are welcome! **Designers especially:** UI/UX ideas are wanted, see [issue #24](https://github.com/AbdulSamad94/clipsmith/issues/24). See [CONTRIBUTING.md](CONTRIBUTING.md) and the [`good first issue`](https://github.com/AbdulSamad94/clipsmith/labels/good%20first%20issue) label. If ReelCraft AI saves you time, a ⭐ helps other people find it.
 
 ## Use responsibly
 
