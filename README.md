@@ -13,7 +13,6 @@ Paste a YouTube link or upload a video. ReelCraft AI finds the best 30–60 seco
 - **Cloud-ready processing** using Groq transcription, Gemini moment selection, MongoDB account data and Cloudinary clip storage.
 - **Download clips** individually or as a ZIP; YouTube publishing is not included.
 
-![ReelCraft AI screenshot](docs/ss.png)
 
 ## What it does
 
