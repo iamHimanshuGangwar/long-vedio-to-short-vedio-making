@@ -1,0 +1,49 @@
+# AI code review by PR-Agent (https://github.com/the-pr-agent/pr-agent), open source,
+# using Google's Gemini API free tier.
+#
+# Setup: create a free key at https://aistudio.google.com/apikey and save it as the
+# repository secret GEMINI_API_KEY (Settings -> Secrets and variables -> Actions).
+# Without the secret this workflow does nothing.
+#
+# In any PR you can also comment: /review, /describe, /improve or /ask "<question>".
+name: PR-Agent review
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  pr_agent:
+    if: >-
+      github.event.sender.type != 'Bot' &&
+      (github.event_name == 'pull_request' ||
+       (github.event.issue.pull_request && startsWith(github.event.comment.body, '/') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)))
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+    steps:
+      - name: Skip (no GEMINI_API_KEY secret)
+        if: env.HAS_KEY != 'true'
+        run: echo "Add a GEMINI_API_KEY repository secret to enable PR-Agent reviews."
+      - name: PR-Agent
+        if: env.HAS_KEY == 'true'
+        # Pinned to an exact commit (v0.50.0): this step holds a write token and the API key.
+        uses: the-pr-agent/pr-agent@e673a02076ce09a4726c3d0c3cc85780e59ca52b
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          config.model: "gemini/gemini-3.8-flash"
+          config.fallback_models: '["gemini/gemini-3.5-flash-lite"]'
+          # Review new commits too, not only when the PR is opened.
+          github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "synchronize"]'
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "false"
+          github_action_config.auto_improve: "false"

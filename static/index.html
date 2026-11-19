@@ -1,0 +1,1390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clipsmith — YouTube to Shorts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0e12; --panel: #16181f; --panel-2: #1d2029; --line: #2a2e3a;
+    --text: #eef0f5; --muted: #a9b0c0; --accent: #ffd60a; --accent-ink: #1a1500;
+    --good: #4ade80; --mid: #fbbf24; --low: #a9b0c0; --bad: #ff8a8a; --ring: #7cc4ff;
+    --radius: 14px; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 var(--f-body); }
+  :root { --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --f-body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+    --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace; }
+  h1, h2, h3, .brand, .go, .dlg h2 { font-family: var(--f-display); }
+  [hidden] { display: none !important; }
+  /* A clear blue ring on whatever the keyboard is on, everywhere. */
+  :focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .skip { position: absolute; left: 12px; top: -60px; background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 10px 14px; border-radius: 10px; z-index: 10; }
+  .skip:focus { top: 12px; }
+  a { color: #8cc8ff; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 20px 80px; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; letter-spacing: -.01em; }
+  .brand i { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); display: grid; place-items: center; }
+  .brand i::after { content: ""; border-left: 9px solid var(--accent-ink); border-top: 6px solid transparent; border-bottom: 6px solid transparent; margin-left: 2px; }
+  .mode { font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
+  .mode b { color: var(--text); font-weight: 600; }
+  .mode .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--low); }
+  .mode.ai .dot { background: var(--good); }
+
+  .hero { text-align: center; padding: 34px 0 26px; }
+  h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.1; margin: 0 0 12px; letter-spacing: -.03em; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .hero p { color: var(--muted); margin: 0 auto; max-width: 560px; font-size: 16px; }
+
+  form { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 20px; max-width: 820px; margin: 26px auto 0; }
+  .lbl, .opts label, .focus label { display: block; font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .row { display: flex; gap: 10px; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  input[type=url], input[type=text], select, textarea {
+    width: 100%; min-height: 46px; background: var(--bg); color: var(--text); border: 1px solid #3a3f4d;
+    border-radius: 10px; padding: 10px 12px; font-size: 16px; transition: border-color .15s, box-shadow .15s; }
+  input[type=url] { flex: 1; min-width: 0; min-height: 54px; padding: 14px 16px; font-size: 17px; }
+  input[type=url]:hover, input[type=text]:hover, select:hover, textarea:hover { border-color: #5a6072; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(124,196,255,.35); }
+  input[aria-invalid="true"] { border-color: var(--bad); }
+  ::placeholder { color: #7d8496; }
+  button { cursor: pointer; border: 0; border-radius: 11px; }
+  .go { background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 0 28px; min-height: 54px; font-size: 17px; white-space: nowrap; transition: filter .15s, transform .1s; }
+  .go:hover:not(:disabled) { filter: brightness(1.08); }
+  .go:active:not(:disabled) { transform: translateY(1px); }
+  .go:disabled { opacity: .55; cursor: not-allowed; }
+
+  /* File picker: the native input stays underneath, so keyboard and screen readers work as normal. */
+  .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; margin: 14px 0; }
+  .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .drop { position: relative; display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 10px 14px;
+    border: 1.5px dashed #3a3f4d; border-radius: 12px; background: var(--bg); transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: #1a1a12; }
+  .drop:focus-within { border-style: solid; border-color: var(--ring); box-shadow: 0 0 0 3px rgba(124,196,255,.35); }
+  .drop input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+  .drop svg { flex: none; color: var(--accent); }
+  .drop .t { font-size: 15px; line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }
+  .drop .t span { display: block; color: var(--muted); font-size: 13px; }
+  .drop .clear { position: relative; z-index: 1; margin-left: auto; }
+
+  .sect { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .sect-h { margin: 0 0 12px; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+  .checks { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  .check { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 14px; border: 1px solid var(--line);
+    border-radius: 10px; background: var(--bg); color: var(--text); font-size: 15px; cursor: pointer; }
+  .check:hover { border-color: #5a6072; }
+  .check:has(input:checked) { border-color: rgba(255,214,10,.55); }
+  .check input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  .focus { display: grid; grid-template-columns: 1fr 120px 120px; gap: 14px; }
+  .hint { font-size: 13.5px; color: var(--muted); margin: 8px 0 0; }
+  @media (max-width: 560px) { .focus { grid-template-columns: 1fr 1fr; } .focus > :first-child { grid-column: 1 / -1; } }
+  .formerr { color: var(--bad); margin: 12px 2px 0; font-size: 15px; }
+  .formerr:empty { display: none; }
+
+  section.job { margin-top: 42px; }
+  .jobhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+  .jobhead h2 { font-size: 18px; margin: 0 0 3px; letter-spacing: -.01em; }
+  .jobhead .sub { color: var(--muted); font-size: 13px; }
+  .ghost { display: inline-flex; align-items: center; min-height: 40px; background: transparent; color: var(--text); border: 1px solid #3a3f4d;
+    padding: 0 14px; font-size: 14px; font-weight: 600; border-radius: 10px; text-decoration: none; white-space: nowrap; }
+  .ghost:hover { background: var(--panel-2); border-color: #5a6072; }
+  .ghost.danger:hover { color: var(--bad); border-color: var(--bad); }
+  .job-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .bar { height: 10px; background: var(--panel-2); border-radius: 99px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--accent); border-radius: 99px; transition: width .5s ease; }
+  .status { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 14.5px; margin-top: 8px; }
+  .status .pct { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .note { border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 12px 14px; font-size: 14.5px; color: var(--muted); margin-bottom: 14px; }
+  .note.err { border-color: #7a3434; background: #241517; color: #ffc4c4; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 18px; margin: 16px 0 0; padding: 0; list-style: none; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
+  .vid { position: relative; aspect-ratio: 9/16; background: #000; }
+  .vid video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .score { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,.72); backdrop-filter: blur(6px);
+    border-radius: 9px; padding: 4px 9px; font-weight: 800; font-size: 15px; display: flex; align-items: baseline; gap: 4px; }
+  .score small { font-weight: 500; font-size: 10.5px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+  .len { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,.72); border-radius: 9px; padding: 4px 8px; font-size: 12.5px; }
+  .body { padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
+  .body h3 { margin: 0; font-size: 16px; line-height: 1.3; }
+  .body p { margin: 0; color: var(--muted); font-size: 14px; }
+  .tags { color: #8cd6ff; font-size: 13.5px; overflow-wrap: anywhere; }
+  .actions { display: flex; gap: 8px; margin-top: auto; padding-top: 6px; }
+  .actions a, .actions button { flex: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; text-decoration: none; border-radius: 10px; font-size: 14.5px; font-weight: 600; }
+  .dl { background: var(--accent); color: var(--accent-ink); }
+  .dl:hover { filter: brightness(1.08); }
+  .cp { background: var(--panel-2); color: var(--text); border: 1px solid #3a3f4d; }
+  .cp:hover { border-color: #5a6072; }
+  .empty { text-align: center; color: var(--muted); margin: 48px auto 0; max-width: 420px; padding: 34px 20px; border: 1.5px dashed var(--line); border-radius: 16px; font-size: 15px; }
+  .empty strong { display: block; color: var(--text); font-size: 17px; margin-bottom: 4px; }
+  @media (max-width: 560px) { .row { flex-direction: column; } .go { padding: 13px; } }
+  .hdr-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .ytbadge { font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; text-decoration: none; background: transparent; }
+  .ytbadge b { color: var(--text); font-weight: 600; }
+  a.ytbadge:hover, button.ytbadge:hover { color: var(--text); border-color: var(--muted); }
+  .ytbadge.on { border-color: #5b2a2a; }
+  .ytbadge .ytdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #ff3b30; margin-right: 6px; }
+  .ytbadge { display: inline-flex; align-items: center; min-height: 36px; }
+  .post { width: 100%; min-height: 44px; background: transparent; color: var(--text); border: 1px solid #3a3f4d; border-radius: 10px; font-size: 14.5px; font-weight: 600; }
+  .post:hover { border-color: #ff3b30; }
+  .post:disabled { opacity: .5; cursor: default; }
+  .ytstat { font-size: 13.5px; color: var(--muted); }
+  .ytstat:empty { display: none; }
+  .ytstat.err { color: var(--bad); }
+  #ytmsg { max-width: 820px; margin: 16px auto 0; }
+  .banner { border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 12px 14px; font-size: 15px; }
+  .banner.err { border-color: #7a3434; background: #241517; color: #ffc4c4; }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; padding: 0; width: min(560px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  .dlg { padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .dlg h2 { margin: 0; font-size: 19px; }
+  .dlg h2 .sub { font-size: 14px; font-weight: 400; color: var(--muted); }
+  .dlg label.lbl { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .dlg input[type=datetime-local] { width: 100%; min-height: 46px; background: var(--bg); color: var(--text); border: 1px solid #3a3f4d; border-radius: 10px; padding: 9px 12px; }
+  .dlg textarea { min-height: 96px; resize: vertical; }
+  .dlg .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .dlg fieldset { border: 0; margin: 0; padding: 0; }
+  .dlg legend { padding: 0; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .dlg .opt { display: flex; align-items: center; gap: 10px; min-height: 40px; font-size: 15px; cursor: pointer; }
+  .dlg .opt input { accent-color: var(--accent); width: 19px; height: 19px; margin: 0; }
+  .dlg .count { float: right; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .dlg .btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+  .dlg .btns button { min-height: 44px; padding: 0 20px; font-weight: 700; }
+  .dlg .err { color: var(--bad); font-size: 14.5px; }
+  .dlg .err:empty { display: none; }
+  @media (max-width: 560px) { .dlg .two { grid-template-columns: 1fr; } }
+
+  /* ---------- Settings ---------- */
+  .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 16px; }
+  .setting { border: 0; margin: 0; padding: 0; min-width: 0; }
+  .setting.wide { grid-column: 1 / -1; }
+  .setting > legend, .setting > label { display: block; padding: 0; margin-bottom: 8px; font-size: 14px; font-weight: 600; color: var(--text); }
+  @media (max-width: 620px) { .settings { grid-template-columns: 1fr; } }
+
+  /* Segmented buttons are real radio groups: arrow keys move between options. */
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; background: var(--bg); border: 1px solid #3a3f4d; border-radius: 12px; }
+  .seg label { position: relative; display: block; }
+  .seg input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+  .seg span { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 6px 8px; border-radius: 8px;
+    font: 600 14.5px/1.15 var(--f-mono); color: var(--muted); text-align: center; transition: background .15s, color .15s; }
+  .seg label:hover span { color: var(--text); background: var(--panel-2); }
+  .seg input:checked + span { background: var(--accent); color: var(--accent-ink); }
+  .seg input:focus-visible + span { outline: 3px solid var(--ring); outline-offset: 2px; }
+  .seg-icons span { flex-direction: column; gap: 3px; min-height: 64px; }
+  .seg-icons b { font-size: 15px; }
+  .seg-icons small { font: 500 12px/1.2 var(--f-body); opacity: .85; }
+  .ar { display: block; border: 2px solid currentColor; border-radius: 3px; }
+
+  /* Native selects kept for accessibility, just restyled with a clear chevron. */
+  select { appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 40px; font-weight: 500;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a9b0c0' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center; }
+  select option { background: var(--panel); color: var(--text); }
+
+  /* Switches: checkboxes with role="switch", the whole row is clickable. */
+  .switches { margin-top: 18px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 60px; padding: 10px 16px; cursor: pointer; background: var(--bg); transition: background .15s; }
+  .switch + .switch { border-top: 1px solid var(--line); }
+  .switch:hover { background: #12141a; }
+  .switch b { display: block; font-weight: 600; font-size: 15px; }
+  .switch small { display: block; color: var(--muted); font-size: 13.5px; }
+  .switch input { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 48px; height: 28px; margin: 0; cursor: pointer;
+    border-radius: 999px; background: #3a3f4d; transition: background .2s; }
+  .switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #e6e8ee; transition: transform .2s; }
+  .switch input:checked { background: var(--accent); }
+  .switch input:checked::after { transform: translateX(20px); background: var(--accent-ink); }
+
+  /* ---------- Clip list: one clip per row, video on the left, details on the right ---------- */
+  .grid { grid-template-columns: 1fr; gap: 14px; }
+  .clip { display: flex; gap: 20px; align-items: flex-start; padding: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; transition: border-color .15s; }
+  .clip:hover, .clip:focus-within { border-color: #3a3f4d; }
+  .clip .vid { flex: none; border-radius: 10px; overflow: hidden; background: #000; }
+  .clip .vid.tall { width: 180px; }
+  .clip .vid.square { width: 220px; }
+  .clip .vid.wide { width: 300px; }
+  .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  .meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .rank { font: 700 15px/1 var(--f-mono); color: var(--accent); margin-right: 2px; }
+  .pill { font: 500 12.5px/1 var(--f-mono); color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 9px; }
+  .scorebox { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+  .scorebox .meter { width: 70px; height: 6px; border-radius: 99px; background: var(--panel-2); overflow: hidden; }
+  .scorebox .meter i { display: block; height: 100%; border-radius: 99px; }
+  .scorebox b { font: 700 15px/1 var(--f-mono); }
+  .scorebox small { font-size: 13px; color: var(--muted); text-transform: capitalize; }
+  .info h4 { font-family: var(--f-display); margin: 0; font-size: 19px; line-height: 1.3; letter-spacing: -.01em; overflow-wrap: anywhere; }
+  .why { margin: 0; color: var(--muted); font-size: 14.5px; max-width: 68ch; }
+  .why span { color: var(--text); font-weight: 600; }
+  .info .tags { font-size: 14px; }
+  .info .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 4px; }
+  .info .actions a, .info .actions button { flex: 0 1 auto; gap: 8px; padding: 0 16px; min-height: 44px; border-radius: 10px; font-size: 14.5px; font-weight: 600; }
+  .info .post { width: auto; display: inline-flex; align-items: center; justify-content: center; }
+  .info .post:disabled { opacity: .5; cursor: not-allowed; }
+  @media (max-width: 640px) {
+    .clip { flex-direction: column; padding: 12px; gap: 14px; }
+    .clip .vid.tall, .clip .vid.square, .clip .vid.wide { width: 100%; max-width: 360px; align-self: center; }
+    .scorebox { margin-left: 0; }
+    .info .actions a, .info .actions button { flex: 1 1 100%; }
+  }
+
+  /* ---------- Clip-making progress: three named stages ---------- */
+  .prog { margin-top: 14px; padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; }
+  .stages { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .stage-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .stage-n { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font: 700 13px/1 var(--f-mono);
+    border: 2px solid #3a3f4d; color: var(--muted); }
+  .stage-t { font-size: 14.5px; font-weight: 600; color: var(--muted); line-height: 1.25; }
+  .stage.now .stage-n { border-color: var(--accent); color: var(--accent); }
+  .stage.now .stage-t { color: var(--text); }
+  .stage.done .stage-n { background: var(--good); border-color: var(--good); color: #0b1a10; }
+  .stage.done .stage-n svg { width: 14px; height: 14px; }
+  .stage.done .stage-t { color: var(--text); }
+  .stage-bar { height: 6px; border-radius: 99px; background: var(--panel-2); overflow: hidden; }
+  .stage-bar i { display: block; height: 100%; border-radius: 99px; background: var(--accent); transition: width .5s ease; }
+  .stage.done .stage-bar i { background: var(--good); }
+  .now-box { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .now-txt { flex: 1; min-width: 0; }
+  .now-txt b { display: block; font-size: 15.5px; }
+  .now-txt .what { display: block; color: var(--muted); font-size: 14px; }
+  .now-box .pct { font: 700 22px/1 var(--f-mono); color: var(--accent); }
+  .ready { margin-top: 12px; font-size: 14px; color: var(--good); }
+  .spin { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid #3a3f4d; border-top-color: var(--accent); animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none !important; border-color: var(--accent); } }
+  @media (max-width: 560px) { .stages { grid-template-columns: 1fr; gap: 10px; } }
+
+  /* ---------- YouTube upload box under each clip ---------- */
+  .ytstat:empty { display: none; }
+  .yt-box { border-radius: 12px; padding: 12px 14px; font-size: 14px; border: 1px solid var(--line); background: var(--bg); }
+  .yt-box.busy { border-color: #3a3f4d; }
+  .yt-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .yt-title { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
+  .yt-pct { font: 700 15px/1 var(--f-mono); color: var(--accent); }
+  .yt-hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .yt-box.ok, .yt-box.err { display: flex; gap: 10px; align-items: flex-start; }
+  .yt-box.ok { border-color: rgba(74,222,128,.4); background: #0f1d15; }
+  .yt-box.ok > svg { color: var(--good); margin-top: 2px; flex: none; }
+  .yt-box.err { border-color: #7a3434; background: #241517; color: #ffc4c4; }
+  .yt-box.err > svg { color: var(--bad); margin-top: 2px; flex: none; }
+  .yt-box b { display: block; color: var(--text); font-size: 15px; }
+  .yt-box a { color: #8cc8ff; font-weight: 600; }
+
+  /* Once posted, the post button steps back to a small secondary action. */
+  .info .post.again { min-height: 40px; padding: 0 12px; font-size: 13.5px; font-weight: 500; color: var(--muted); border-color: var(--line); background: transparent; }
+  .info .post.again:hover { color: var(--text); border-color: #5a6072; }
+  .info .post.again svg { width: 15px; height: 15px; opacity: .8; }
+
+  /* ---------- ⋯ menu ---------- */
+  .info .actions .more { flex: none; width: 44px; padding: 0; margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; color: var(--muted); border: 1px solid #3a3f4d; }
+  .info .actions .more:hover, .info .actions .more[aria-expanded="true"] { color: var(--text); background: var(--panel-2); border-color: #5a6072; }
+  .menu { position: absolute; z-index: 50; min-width: 250px; padding: 6px; background: var(--panel-2); border: 1px solid #3a3f4d; border-radius: 12px;
+    box-shadow: 0 18px 40px -12px rgba(0,0,0,.7); animation: menuIn .12s ease-out; }
+  @keyframes menuIn { from { opacity: 0; transform: translateY(-4px); } }
+  .menu [role=menuitem] { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px;
+    background: transparent; color: var(--text); font-size: 14.5px; text-align: left; cursor: pointer; }
+  .menu [role=menuitem] svg { flex: none; color: var(--muted); }
+  .menu [role=menuitem]:hover, .menu [role=menuitem]:focus-visible { background: #2a2e3a; outline: none; box-shadow: inset 0 0 0 2px var(--ring); }
+  .menu [role=menuitem]:hover { box-shadow: none; }
+  .menu [role=menuitem][aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+  .menu .danger, .menu .danger svg { color: var(--bad); }
+  .menu .danger:hover { background: #2c1719; }
+  .menu-sep { height: 1px; background: #3a3f4d; margin: 6px 4px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60; max-width: calc(100vw - 32px);
+    background: var(--text); color: var(--bg); font-weight: 600; font-size: 15px; padding: 12px 18px; border-radius: 12px; box-shadow: 0 12px 30px -10px rgba(0,0,0,.6); }
+  @media (max-width: 640px) { .info .actions .more { flex: 0 0 44px; } .info .actions .dl, .info .actions .post { flex: 1 1 0; } }
+
+  /* ---------- Posted clips fold into one row ---------- */
+  .compact { display: none; }
+  .clip.folded { padding: 8px 10px 8px 14px; }
+  .clip.folded > .vid, .clip.folded > .info { display: none; }
+  .clip.folded > .compact { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; flex-wrap: wrap; }
+  .okmark { width: 24px; height: 24px; border-radius: 50%; background: var(--good); color: #0b1a10; display: grid; place-items: center; flex: none; }
+  .okmark svg { width: 14px; height: 14px; }
+  .ctitle { flex: 1 1 200px; min-width: 0; font-weight: 600; font-size: 15.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cstat { color: var(--muted); font-size: 14px; white-space: nowrap; }
+  .cstat a { color: #8cc8ff; font-weight: 600; }
+  .iconbtn { flex: none; width: 44px; height: 44px; display: inline-grid; place-items: center; border-radius: 10px; background: transparent;
+    color: var(--muted); border: 1px solid #3a3f4d; cursor: pointer; }
+  .iconbtn:hover, .iconbtn[aria-haspopup][aria-expanded="true"] { color: var(--text); background: var(--panel-2); border-color: #5a6072; }
+  .collapse { display: none; margin-left: 4px; }
+  .clip.posted .collapse { display: inline-grid; }
+  @media (max-width: 640px) { .cstat { order: 5; flex-basis: 100%; padding-left: 34px; white-space: normal; } }
+
+  /* ---------- Upload tray ---------- */
+  .tray { position: fixed; right: 20px; bottom: 20px; z-index: 40; width: min(380px, calc(100vw - 32px)); background: var(--panel);
+    border: 1px solid #3a3f4d; border-radius: 16px; box-shadow: 0 24px 60px -16px rgba(0,0,0,.8); overflow: hidden; }
+  .tray-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 16px; background: var(--panel-2); }
+  .tray-title { flex: 1; margin: 0; font-size: 15px; font-weight: 700; }
+  .tray-head .iconbtn { width: 40px; height: 40px; border-color: transparent; }
+  .tray-head .iconbtn svg { transition: transform .2s; }
+  .tray.min .tray-list { display: none; }
+  .tray.min #trayToggle svg { transform: rotate(180deg); }
+  .tray-list { list-style: none; margin: 0; padding: 6px; max-height: 300px; overflow-y: auto; }
+  .t-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border-radius: 10px; font-size: 14px; }
+  .t-item + .t-item { border-top: 1px solid var(--line); }
+  .t-item > div { flex: 1; min-width: 0; }
+  .t-item > svg, .t-item > .spin { flex: none; margin-top: 2px; }
+  .t-item.ok > svg { color: var(--good); }
+  .t-item.err > svg { color: var(--bad); }
+  .t-err { display: block; color: #ffc4c4; }
+  .t-name { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .t-rank { font-family: var(--f-mono); color: var(--accent); }
+  .t-item a { color: #8cc8ff; font-weight: 600; }
+  .t-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+  .t-row .bar { flex: 1; height: 6px; }
+  .t-pct { font: 700 13px/1 var(--f-mono); color: var(--accent); min-width: 52px; text-align: right; }
+  .wrap { padding-bottom: 140px; } /* room so the tray never covers the last clip */
+  @media (max-width: 560px) { .tray { right: 16px; bottom: 16px; } .toast { bottom: auto; top: 16px; } }
+
+  /* Every clip can fold now; only posted ones start folded. */
+  .collapse { display: inline-grid !important; }
+  .clip:not(.posted) .okmark, .clip:not(.posted) .okmark-txt { display: none; }
+  .c-err { color: var(--bad); font-weight: 600; }
+
+  /* Fill the card: video and details are the same height, buttons sit on the bottom edge. */
+  .clip { align-items: stretch; }
+  .clip .vid.tall { width: 156px; align-self: flex-start; }
+  .info { gap: 8px; }
+  .info .actions { margin-top: auto; padding-top: 8px; }
+  .hookline { margin: 0; font-size: 14.5px; color: var(--text); padding: 8px 12px; background: var(--bg); border-left: 3px solid var(--accent); border-radius: 6px; }
+  .hookline span { color: var(--muted); font-weight: 600; margin-right: 4px; }
+  .why { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  @media (max-width: 640px) { .clip .vid.tall { width: 100%; max-width: 300px; align-self: center; } }
+
+  /* ---------- Video sections ---------- */
+  .jobs-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 48px 0 0; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .jobs-head h2 { margin: 0; font-size: 22px; letter-spacing: -.02em; }
+  .jobs-head span { color: var(--muted); font: 500 13.5px var(--f-mono); }
+  section.job { margin-top: 18px; background: #12141a; border: 1px solid var(--line); border-radius: 18px; padding: 14px; }
+  .jobhead { display: flex; align-items: center; gap: 14px; margin: 0; flex-wrap: wrap; }
+  .job-thumb { flex: none; width: 52px; height: 52px; border-radius: 10px; object-fit: cover; background: var(--panel-2); }
+  .job-thumb.ph { display: grid; place-items: center; color: var(--muted); }
+  .job-main { flex: 1 1 260px; min-width: 0; }
+  .jobhead h3 { font-family: var(--f-display); font-size: 17.5px; line-height: 1.3; margin: 0 0 6px; overflow-wrap: anywhere; }
+  .badge { display: inline-block; vertical-align: 2px; margin-left: 6px; padding: 3px 8px; border-radius: 999px; font: 600 12px/1.2 var(--f-body); }
+  .badge.run { background: rgba(255,214,10,.14); color: var(--accent); }
+  .badge.bad { background: #3a1c1f; color: #ffc4c4; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips .chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; background: var(--panel-2); color: var(--muted); font-size: 12.5px; }
+  .chips .chip svg { flex: none; }
+  .stats { display: flex; gap: 4px; margin: 0; }
+  .stats div { min-width: 64px; padding: 6px 10px; border-radius: 10px; background: var(--panel); text-align: center; }
+  .stats dt { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .stats dd { margin: 0; font: 700 18px/1.2 var(--f-mono); }
+  .job-actions { display: flex; align-items: center; gap: 8px; }
+  .job-actions .ghost { gap: 6px; min-height: 44px; }
+  .iconbtn.danger:hover { color: var(--bad); border-color: var(--bad); background: #2c1719; }
+  .job-toggle svg { transition: transform .2s; }
+  .job.closed .job-toggle svg { transform: rotate(-90deg); }
+  .job.closed .job-body { display: none; }
+  .job-body > .grid { margin-top: 14px; }
+  .job-body > .prog, .job-body > .note { margin-top: 14px; }
+  .job-body > .note { margin-bottom: 0; }
+  @media (max-width: 720px) {
+    .stats { order: 3; flex: 1 1 100%; } .stats div { flex: 1; }
+    .job-actions { margin-left: auto; }
+  }
+
+  /* Phone fixes: let the clip list shrink to the panel, keep the thumbnail beside the title. */
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .clip { min-width: 0; }
+  @media (max-width: 720px) {
+    .job-main { flex: 1 1 calc(100% - 60px); }
+    .job-thumb { width: 44px; height: 44px; }
+  }
+  /* Caption style picker: each option is a small preview of the burned-in captions. */
+  .legend-note { font-weight: 400; color: var(--muted); font-size: 12.5px; text-transform: none; letter-spacing: 0; }
+  .capstyles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+  .capstyles label { display: block; cursor: pointer; }
+  .capstyles input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .capstyles .cs { display: flex; flex-direction: column; border: 2px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg); min-height: 44px; }
+  .capstyles input:checked + .cs { border-color: var(--accent); }
+  .capstyles input:focus-visible + .cs { outline: 3px solid var(--ring); outline-offset: 2px; }
+  .capstyles .frame { position: relative; aspect-ratio: 9 / 10; display: flex; align-items: flex-end; justify-content: center; padding: 0 6px 22%; overflow: hidden;
+    background: radial-gradient(ellipse 45% 38% at 50% 34%, #6b7c93 0 60%, transparent 62%), linear-gradient(160deg, #3b4658, #1d232e); }
+  .capstyles .txt { font-size: 19px; font-weight: 700; line-height: 1.1; text-align: center; color: #fff; white-space: nowrap;
+    -webkit-text-stroke: 4px #000; paint-order: stroke fill; text-shadow: 0 2px 2px rgba(0,0,0,.6); }
+  .capstyles .txt span { display: inline-block; margin: 0 .12em; animation: cs-word 1.8s steps(1) infinite; }
+  .capstyles .txt span:nth-child(2) { animation-delay: .6s; }
+  .capstyles .txt span:nth-child(3) { animation-delay: 1.2s; }
+  @keyframes cs-word { 0% { color: var(--hl); transform: scale(1.08); } 33.4%, 100% { color: #fff; transform: none; } }
+  /* Build-up style: words appear one at a time, as they are spoken. */
+  .capstyles .txt.reveal span { animation-delay: 0s !important; }
+  .capstyles .txt.reveal span:nth-child(1) { animation-name: cs-rev1; }
+  .capstyles .txt.reveal span:nth-child(2) { animation-name: cs-rev2; }
+  .capstyles .txt.reveal span:nth-child(3) { animation-name: cs-rev3; }
+  @keyframes cs-rev1 { 0% { color: var(--hl); } 33.4%, 100% { color: #fff; } }
+  .capstyles .txt.reveal span { overflow: hidden; vertical-align: bottom; }
+  /* Hidden words take no space, so the line stays centred and grows like on the video. */
+  @keyframes cs-rev2 { 0% { max-width: 0; margin: 0; } 33.4% { max-width: 6em; color: var(--hl); } 66.7%, 100% { max-width: 6em; color: #fff; } }
+  @keyframes cs-rev3 { 0% { max-width: 0; margin: 0; } 66.7%, 100% { max-width: 6em; color: var(--hl); } }
+  @media (prefers-reduced-motion: reduce) {
+    .capstyles .txt span { animation: none; }
+    .capstyles .txt span:nth-child(3) { color: var(--hl); }
+  }
+  .capstyles .name { padding: 7px 8px; font-size: 13.5px; font-weight: 600; color: var(--text); }
+  .capstyles .name small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<a class="skip" href="#jobs">Skip to your clips</a>
+<div class="wrap">
+  <header>
+    <div class="brand"><i aria-hidden="true"></i>Clipsmith</div>
+    <div class="hdr-right">
+      <span id="yt" class="hdr-right"></span>
+      <div class="mode" id="mode" role="status"><span class="dot" aria-hidden="true"></span>Checking…</div>
+    </div>
+  </header>
+
+  <main>
+  <div class="hero">
+    <h1>One long video in.<br><em>A batch of Shorts</em> out.</h1>
+    <p>Paste a YouTube link. The best one-minute moments come back cut, reframed to vertical and captioned, ranked by how likely they are to hold a viewer.</p>
+  </div>
+
+  <form id="form" novalidate aria-label="Make clips">
+    <label class="lbl" for="url">YouTube link</label>
+    <div class="row">
+      <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=…" required autocomplete="off" aria-describedby="formerr">
+      <button class="go" id="go" type="submit">Get clips</button>
+    </div>
+    <div class="or" aria-hidden="true">or</div>
+    <div class="drop" id="drop">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3m0 0-4 4m4-4 4 4"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+      <div class="t" id="droptext"><b>Upload a video file</b><span>Drop it here or click to browse · MP4, MOV, MKV, WebM</span></div>
+      <input type="file" id="file" accept=".mp4,.mov,.mkv,.webm,video/*" aria-labelledby="droptext">
+      <button type="button" class="ghost clear" id="clearfile" hidden>Remove file</button>
+    </div>
+
+    <div class="sect">
+    <h2 class="sect-h">Clip settings</h2>
+    <div class="settings">
+      <fieldset class="setting">
+        <legend>Number of clips</legend>
+        <div class="seg">
+          <label><input type="radio" name="count" value="3"><span>3</span></label>
+          <label><input type="radio" name="count" value="5" checked><span>5</span></label>
+          <label><input type="radio" name="count" value="8"><span>8</span></label>
+          <label><input type="radio" name="count" value="10"><span>10</span></label>
+        </div>
+      </fieldset>
+      <fieldset class="setting">
+        <legend>Clip length <span class="sr-only">in seconds</span></legend>
+        <div class="seg">
+          <label><input type="radio" name="len" value="15-30"><span>15–30s</span></label>
+          <label><input type="radio" name="len" value="30-60" checked><span>30–60s</span></label>
+          <label><input type="radio" name="len" value="45-60"><span>45–60s</span></label>
+          <label><input type="radio" name="len" value="60-90"><span>60–90s</span></label>
+        </div>
+      </fieldset>
+      <fieldset class="setting wide">
+        <legend>Aspect ratio</legend>
+        <div class="seg seg-icons">
+          <label><input type="radio" name="aspect" value="9:16" checked><span><i class="ar" style="width:11px;height:19px" aria-hidden="true"></i><b>9:16</b><small>Shorts, TikTok, Reels</small></span></label>
+          <label><input type="radio" name="aspect" value="1:1"><span><i class="ar" style="width:16px;height:16px" aria-hidden="true"></i><b>1:1</b><small>Square</small></span></label>
+          <label><input type="radio" name="aspect" value="16:9"><span><i class="ar" style="width:22px;height:12px" aria-hidden="true"></i><b>16:9</b><small>Landscape</small></span></label>
+        </div>
+      </fieldset>
+      <fieldset class="setting wide">
+        <legend>Caption style <span class="legend-note">preview shows how captions look on the video</span></legend>
+        <div class="capstyles" id="style"></div>
+      </fieldset>
+      <div class="setting">
+        <label for="layout">Framing</label>
+        <select id="layout">
+          <option value="auto" selected>Auto</option>
+          <option value="fill">Fill, follow the speaker</option>
+          <option value="fit">Fit, blurred background</option>
+          <option value="split">Split: facecam + gameplay</option>
+        </select>
+      </div>
+    </div>
+    <div class="switches">
+      <label class="switch"><span><b>Hook text at the start</b><small>A short line on screen in the first seconds</small></span><input type="checkbox" role="switch" id="hook" checked></label>
+      <label class="switch"><span><b>Remove pauses and "uh"/"um"</b><small>Tighter pacing, same words</small></span><input type="checkbox" role="switch" id="trim" checked></label>
+    </div>
+    </div>
+
+    <div class="sect">
+    <h2 class="sect-h">Focus <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></h2>
+    <div class="focus">
+      <div><label for="prompt">What should the clips be about?</label>
+        <input type="text" id="prompt" maxlength="300" autocomplete="off" placeholder="e.g. the part about money"></div>
+      <div><label for="from">From</label><input type="text" id="from" placeholder="mm:ss" autocomplete="off" aria-describedby="rangehint"></div>
+      <div><label for="to">To</label><input type="text" id="to" placeholder="mm:ss" autocomplete="off" aria-describedby="rangehint"></div>
+    </div>
+    <p class="hint" id="rangehint">Only look for clips between these times, like 12:30 or 1:02:03. Leave empty to use the whole video.</p>
+    </div>
+    <p class="formerr" id="formerr" role="alert"></p>
+  </form>
+
+  <div id="ytmsg" role="status"></div>
+  <div id="jobs" tabindex="-1" aria-busy="false"></div>
+  <div id="announce" class="sr-only" role="status" aria-live="polite"></div>
+  <div id="toast" class="toast" hidden></div>
+  <section id="tray" class="tray" aria-labelledby="trayTitle" hidden>
+    <div class="tray-head">
+      <h2 id="trayTitle" class="tray-title">Uploads</h2>
+      <button class="iconbtn" id="trayToggle" type="button" aria-expanded="true" aria-controls="trayList" aria-label="Minimize uploads">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      <button class="iconbtn" id="trayClose" type="button" aria-label="Close uploads" hidden>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <ul class="tray-list" id="trayList"></ul>
+  </section>
+  </main>
+</div>
+
+<dialog id="ytdlg" aria-labelledby="ytdlgTitle">
+  <form class="dlg" id="ytform" method="dialog">
+    <h2 id="ytdlgTitle">Post to YouTube <span class="sub" id="ytchan"></span></h2>
+    <div><label class="lbl" for="ytTitle">Title <span class="count" id="ytCount">0/100</span></label>
+      <input type="text" id="ytTitle" maxlength="100" required></div>
+    <div><label class="lbl" for="ytDesc">Description</label><textarea id="ytDesc" maxlength="4500"></textarea></div>
+    <div><label class="lbl" for="ytTags">Hashtags</label><input type="text" id="ytTags" placeholder="#shorts #minecraft" aria-describedby="ytTagsHint">
+      <p class="hint" id="ytTagsHint">Separate them with spaces.</p></div>
+    <div class="two">
+      <div><label class="lbl" for="ytPrivacy">Visibility</label>
+        <select id="ytPrivacy"><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></div>
+      <div><label class="lbl" for="ytWhen">When</label>
+        <select id="ytWhen"><option value="now">Post now</option><option value="later">Schedule</option></select></div>
+    </div>
+    <div id="ytLaterBox" hidden><label class="lbl" for="ytAt">Publish at (your local time)</label><input type="datetime-local" id="ytAt" aria-describedby="ytAtHint">
+      <p class="hint" id="ytAtHint">YouTube makes it public at this time by itself; your computer doesn't need to be on. It stays private until then.</p></div>
+    <fieldset><legend>Audience (YouTube requires an answer)</legend>
+      <label class="opt"><input type="radio" name="ytKids" value="no" required> No, it's not made for kids</label>
+      <label class="opt"><input type="radio" name="ytKids" value="yes"> Yes, it's made for kids</label></fieldset>
+    <label class="opt"><input type="checkbox" id="ytNotify" checked> Notify subscribers</label>
+    <label class="opt" id="ytLinkRow"><input type="checkbox" id="ytLink"> Add the full video link to the description</label>
+    <div class="err" id="yterr" role="alert"></div>
+    <div class="btns"><button type="button" class="ghost" id="ytCancel">Cancel</button><button type="submit" class="go" id="ytSubmit">Post</button></div>
+  </form>
+</dialog>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const radio = (name) => document.querySelector(`input[name="${name}"]:checked`).value;
+const jobsEl = $("#jobs");
+let jobs = [];
+let timer = null;
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
+  return data;
+}
+
+async function init() {
+  try {
+    const st = await api("/api/status");
+    const mode = $("#mode");
+    mode.classList.toggle("ai", !!st.ai);
+    mode.innerHTML = st.ai
+      ? `<span class="dot"></span>Moment picking: <b>AI</b> · ${esc(st.model)}`
+      : `<span class="dot"></span>Moment picking: <b>Basic</b> · no AI configured`;
+    if (st.missing && st.missing.length) {
+      $("#formerr").textContent = `Missing on this computer: ${st.missing.join(", ")}. Install ffmpeg and restart (see README).`;
+    }
+    renderCaptionStyles(st.styles, st.style_looks || {});
+  } catch (e) { $("#mode").textContent = "Server not reachable"; }
+  showConnectResult();
+  await loadYouTube();
+  await refresh();
+}
+
+// ---------- caption style previews ----------
+const CAPTION_FONTS = {  // files served from /fonts, the same ones ffmpeg burns in
+  "Bangers": "Bangers-Regular.ttf", "Anton": "Anton-Regular.ttf",
+  "Bebas Neue": "BebasNeue-Regular.ttf", "Poppins ExtraBold": "Poppins-ExtraBold.ttf",
+};
+function renderCaptionStyles(labels, looks) {
+  const faces = Object.entries(CAPTION_FONTS).map(([name, file]) =>
+    `@font-face { font-family: "cap ${name}"; src: url("/fonts/${file}") format("truetype"); font-display: swap; }`).join(" ");
+  let tag = $("#capfonts");
+  if (!tag) { tag = document.createElement("style"); tag.id = "capfonts"; document.head.appendChild(tag); }
+  tag.textContent = faces;
+  const saved = (() => { try { return localStorage.getItem("captionStyle"); } catch { return null; } })();
+  const keys = Object.keys(labels);
+  const pick = keys.includes(saved) ? saved : keys[0];
+  $("#style").innerHTML = keys.map((k) => {
+    const look = looks[k] || {};
+    const words = look.upper === false ? ["this", "is", "how"] : ["THIS", "IS", "HOW"];
+    // bundled fonts load as "cap <name>"; system fonts (Arial, Arial Black) are used directly
+    const font = look.font ? `"cap ${look.font}", "${look.font}", ` : "";
+    return `<label><input type="radio" name="style" value="${esc(k)}" ${k === pick ? "checked" : ""}>
+      <span class="cs"><span class="frame" aria-hidden="true"><span class="txt${look.reveal ? " reveal" : ""}" style="font-size:${Math.min(22, 5.6 / (look.width || 0.3)).toFixed(1)}px; font-family:${esc(font)}sans-serif; --hl:${esc(look.active || "#ffd60a")}">${words.map((w) => `<span>${w}</span>`).join("")}</span></span>
+      <span class="name">${esc(labels[k])}${look.font ? `<small>${esc(look.font)}</small>` : ""}</span></span></label>`;
+  }).join("");
+  $("#style").addEventListener("change", (e) => { try { localStorage.setItem("captionStyle", e.target.value); } catch {} });
+}
+
+// ---------- YouTube ----------
+let yt = { configured: false, connected: false, channel: null };
+const SETUP_DOC = "https://github.com/AbdulSamad94/clipsmith/blob/main/docs/youtube-setup.md";
+
+async function loadYouTube() {
+  try { yt = await api("/api/youtube"); } catch { return; }
+  const el = $("#yt");
+  if (!yt.configured) {
+    el.innerHTML = `<a class="ytbadge" href="${SETUP_DOC}" target="_blank" rel="noopener"><span class="ytdot"></span>Set up YouTube posting</a>`;
+  } else if (!yt.connected) {
+    el.innerHTML = `<a class="ytbadge" href="/api/youtube/connect"><span class="ytdot"></span>Connect YouTube</a>`;
+  } else {
+    const name = yt.channel ? yt.channel.title : "connected";
+    el.innerHTML = `<span class="ytbadge on"><span class="ytdot"></span>YouTube: <b>${esc(name)}</b></span>
+      <button class="ytbadge" id="ytOff" type="button">Disconnect</button>`;
+    $("#ytOff").onclick = async () => {
+      if (!confirm("Disconnect YouTube? Clipsmith will no longer be able to post to your channel.")) return;
+      await api("/api/youtube/disconnect", { method: "POST" }).catch((e) => alert(e.message));
+      await loadYouTube();
+    };
+  }
+}
+
+function showConnectResult() {
+  const p = new URLSearchParams(location.search);
+  const r = p.get("youtube");
+  if (!r) return;
+  const why = p.get("reason");
+  $("#ytmsg").innerHTML = r === "connected"
+    ? `<div class="banner">YouTube connected. Use "Post to YouTube" on any clip.</div>`
+    : `<div class="banner err">YouTube wasn't connected${why === "access_denied" ? " (permission was declined)" : why === "expired" ? " (the sign-in link expired, try again)" : ""}.</div>`;
+  history.replaceState(null, "", location.pathname);
+}
+
+// One polite live region for the whole page. Only state changes are announced, never every percent.
+function announce(msg) {
+  const el = $("#announce");
+  el.textContent = "";
+  setTimeout(() => (el.textContent = msg), 50);
+}
+
+const ICON_CHECK = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`;
+const ICON_ALERT = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></svg>`;
+const ICON_CLOCK = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
+
+// The YouTube box under a clip: waiting → uploading (with a bar) → posted / scheduled, or failed.
+function ytStatusHtml(s) {
+  if (!s) return "";
+  if (s.status === "queued" || s.status === "uploading") {
+    const p = s.status === "uploading" ? (s.progress || 0) : 0;
+    const label = s.status === "queued" ? "Getting ready to upload" : p >= 100 ? "Finishing up on YouTube" : "Uploading to YouTube";
+    return `<div class="yt-box busy">
+      <div class="yt-row"><span class="yt-title"><span class="spin" aria-hidden="true"></span><span class="yt-label">${label}</span></span><span class="yt-pct">${p}%</span></div>
+      <div class="bar" role="progressbar" aria-label="YouTube upload" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}"><div style="width:${p}%"></div></div>
+      <div class="yt-hint">Keep Clipsmith open until this finishes. You can keep using the app.</div></div>`;
+  }
+  if (s.status === "error") {
+    return `<div class="yt-box err">${ICON_ALERT}<div><b>Couldn't post to YouTube</b><div>${esc(s.error)}</div></div></div>`;
+  }
+  if (s.status === "done") {
+    const link = `<a href="${esc(s.url)}" target="_blank" rel="noopener">Open on YouTube<span class="sr-only"> (opens in a new tab)</span> ↗</a>`;
+    if (s.scheduled_for) {
+      return `<div class="yt-box ok">${ICON_CLOCK}<div><b>Scheduled on YouTube</b><div>Goes public ${esc(new Date(s.scheduled_for).toLocaleString())} · ${link}</div></div></div>`;
+    }
+    const vis = s.privacy && s.privacy !== "public" ? ` as ${esc(s.privacy)}` : "";
+    return `<div class="yt-box ok">${ICON_CHECK}<div><b>Posted to YouTube${vis}</b><div>${link}</div></div></div>`;
+  }
+  return "";
+}
+
+const ytBusy = (c) => c.youtube && (c.youtube.status === "queued" || c.youtube.status === "uploading");
+const ytState = (c) => (c.youtube ? c.youtube.status : "none");
+
+// The post button changes with the upload: big "Post to YouTube" → hidden while uploading →
+// small "Post again" once it's up, or "Try again" after a failure.
+function postButtonState(btn, c) {
+  const st = ytState(c);
+  // Once posted, "Post again" lives in the ⋯ menu instead of on the card.
+  btn.hidden = st === "queued" || st === "uploading" || st === "done";
+  btn.classList.toggle("again", st === "done" || st === "error");
+  btn.querySelector(".post-txt").textContent = st === "done" ? "Post again" : st === "error" ? "Try again" : "Post to YouTube";
+}
+
+function updateYouTubeStatus() {
+  for (const j of jobs) {
+    (j.clips || []).forEach((c, i) => {
+      const st = jobsEl.querySelector(`[data-ytstat="${j.id}:${i}"]`);
+      if (st) {
+        const state = ytState(c);
+        if (st.dataset.state === state && state === "uploading") {
+          // Same state: only move the bar, so nothing flickers.
+          const p = c.youtube.progress || 0;
+          st.querySelector(".bar > div").style.width = p + "%";
+          st.querySelector(".bar").setAttribute("aria-valuenow", p);
+          st.querySelector(".yt-pct").textContent = p + "%";
+          if (p >= 100) st.querySelector(".yt-label").textContent = "Finishing up on YouTube";
+        } else if (st.dataset.state !== state) {
+          const first = st.dataset.state === undefined;
+          st.innerHTML = ytStatusHtml(c.youtube);
+          st.dataset.state = state;
+          if (!first) {
+            const n = `Clip ${i + 1}`;
+            if (state === "uploading") announce(`${n}: uploading to YouTube.`);
+            if (state === "done") announce(`${n}: ${c.youtube.scheduled_for ? "scheduled on YouTube" : "posted to YouTube"}.`);
+            if (state === "error") announce(`${n}: couldn't post to YouTube. ${c.youtube.error || ""}`);
+          }
+        }
+      }
+      const btn = jobsEl.querySelector(`[data-post="${j.id}:${i}"]`);
+      if (btn) postButtonState(btn, c);
+      applyFold(j.id, i, c);
+    });
+    const pc = jobsEl.querySelector(`[data-posted="${j.id}"]`);
+    if (pc) pc.textContent = postedCount(j);
+  }
+  renderTray();
+}
+
+// ---------- Posted clips fold into one row ----------
+// A clip folds by itself once it's on YouTube. Opening it again is remembered for this visit.
+// What the viewer chose for each clip (true = folded). Clips they haven't touched
+// follow the default: posted ones folded, the rest open.
+const foldPref = new Map();
+function applyFold(jobId, i, c) {
+  const key = `${jobId}:${i}`;
+  const li = jobsEl.querySelector(`[data-clip="${key}"]`);
+  if (!li) return;
+  const posted = ytState(c) === "done";
+  const folded = foldPref.has(key) ? foldPref.get(key) : posted;
+  li.classList.toggle("posted", posted);
+  if (li.classList.contains("folded") !== folded) {
+    li.classList.toggle("folded", folded);
+    if (folded) li.querySelector("video")?.pause();
+  }
+  const cs = li.querySelector("[data-cstat]");
+  if (cs) {
+    const s = c.youtube || {};
+    const st = ytState(c);
+    const html = st === "done"
+      ? `${s.scheduled_for ? `Scheduled ${esc(new Date(s.scheduled_for).toLocaleDateString())}` : "Posted"} · <a href="${esc(s.url)}" target="_blank" rel="noopener">Open on YouTube<span class="sr-only"> (opens in a new tab)</span> ↗</a>`
+      : st === "queued" || st === "uploading" ? `Uploading to YouTube…`
+      : st === "error" ? `<span class="c-err">Upload failed</span>`
+      : `${Math.round(c.length)}s · score ${Math.round(+c.score || 0)}`;
+    if (cs.innerHTML !== html) cs.innerHTML = html;
+  }
+}
+
+function toggleFold(key) {
+  const [jobId, i] = key.split(":");
+  const job = jobs.find((j) => j.id === jobId);
+  const li = jobsEl.querySelector(`[data-clip="${key}"]`);
+  if (!job || !li) return;
+  const nowFolded = !li.classList.contains("folded");
+  foldPref.set(key, nowFolded);
+  applyFold(jobId, +i, job.clips[+i]);
+  // Keep focus on the matching button in the view that is now showing.
+  li.querySelector(nowFolded ? ".compact [data-expand]" : ".collapse").focus();
+}
+
+// ---------- Upload tray (bottom-right) ----------
+// Lists every upload started this visit. Finished ones stay until the tray is closed.
+const trayKeys = new Set();
+let trayOpen = true;
+function renderTray() {
+  for (const j of jobs) (j.clips || []).forEach((c, i) => { if (ytBusy(c)) trayKeys.add(`${j.id}:${i}`); });
+  const items = [];
+  for (const key of trayKeys) {
+    const [jobId, i] = key.split(":");
+    const job = jobs.find((j) => j.id === jobId);
+    const c = job && job.clips[+i];
+    if (!c || !c.youtube) { trayKeys.delete(key); continue; }
+    items.push({ key, i: +i, c, s: c.youtube });
+  }
+  const tray = $("#tray");
+  if (!items.length) { tray.hidden = true; return; }
+  tray.hidden = false;
+  const busy = items.filter((x) => x.s.status === "queued" || x.s.status === "uploading");
+  const failed = items.filter((x) => x.s.status === "error").length;
+  const avg = busy.length ? Math.round(busy.reduce((a, x) => a + (x.s.progress || 0), 0) / busy.length) : 100;
+  $("#trayTitle").textContent = busy.length
+    ? `Uploading ${busy.length} clip${busy.length > 1 ? "s" : ""} to YouTube · ${avg}%`
+    : failed ? `${failed} upload${failed > 1 ? "s" : ""} failed` : `${items.length} clip${items.length > 1 ? "s" : ""} posted to YouTube`;
+  $("#trayClose").hidden = busy.length > 0; // can't dismiss while something is still uploading
+  const sig = items.map((x) => x.key + x.s.status).join("|");
+  const list = $("#trayList");
+  if (list.dataset.sig !== sig) {
+    list.dataset.sig = sig;
+    list.innerHTML = items.map(({ key, i, c, s }) => {
+      const name = `<span class="t-name"><span class="t-rank">#${i + 1}</span> ${esc(c.title)}</span>`;
+      if (s.status === "done") return `<li class="t-item ok">${ICON_CHECK}<div>${name}<a href="${esc(s.url)}" target="_blank" rel="noopener">${s.scheduled_for ? "Scheduled" : "Posted"} · Open ↗<span class="sr-only"> (opens in a new tab)</span></a></div></li>`;
+      if (s.status === "error") return `<li class="t-item err">${ICON_ALERT}<div>${name}<span class="t-err">${esc(s.error)}</span></div></li>`;
+      return `<li class="t-item busy" data-tkey="${esc(key)}"><span class="spin" aria-hidden="true"></span><div>${name}
+        <div class="t-row"><div class="bar" role="progressbar" aria-label="Upload of clip ${i + 1}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div></div></div><span class="t-pct"></span></div></div></li>`;
+    }).join("");
+  }
+  for (const { key, s } of busy) {
+    const row = list.querySelector(`[data-tkey="${key}"]`);
+    if (!row) continue;
+    const p = s.status === "uploading" ? (s.progress || 0) : 0;
+    row.querySelector(".bar > div").style.width = p + "%";
+    row.querySelector(".bar").setAttribute("aria-valuenow", p);
+    row.querySelector(".t-pct").textContent = s.status === "queued" ? "Waiting" : p + "%";
+  }
+}
+$("#trayToggle").addEventListener("click", () => {
+  trayOpen = !trayOpen;
+  $("#tray").classList.toggle("min", !trayOpen);
+  $("#trayToggle").setAttribute("aria-expanded", String(trayOpen));
+  $("#trayToggle").setAttribute("aria-label", trayOpen ? "Minimize uploads" : "Show uploads");
+});
+$("#trayClose").addEventListener("click", () => { trayKeys.clear(); renderTray(); });
+
+let posting = null; // { job, index }
+let returnFocus = null; // the "Post to YouTube" button, so focus goes back there when the dialog closes
+
+function openPost(jobId, index) {
+  const job = jobs.find((j) => j.id === jobId);
+  const c = job && job.clips[index];
+  if (!c) return;
+  if (!yt.connected) {
+    $("#ytmsg").innerHTML = yt.configured
+      ? `<div class="banner">Click <b>Connect YouTube</b> at the top first.</div>`
+      : `<div class="banner">YouTube posting isn't set up yet. <a href="${SETUP_DOC}" target="_blank" rel="noopener">Follow the 5-minute setup guide</a>.</div>`;
+    window.scrollTo({ top: 0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    return;
+  }
+  posting = { job: jobId, index, video: c.video };
+  returnFocus = document.activeElement;
+  $("#ytchan").textContent = yt.channel ? `· ${yt.channel.title}` : "";
+  $("#ytTitle").value = (c.title || "").replace(/[<>]/g, "").slice(0, 100);
+  $("#ytDesc").value = c.description || "";
+  $("#ytTags").value = (c.hashtags || []).map((h) => "#" + h).join(" ");
+  $("#ytPrivacy").value = "public";
+  $("#ytPrivacy").disabled = false;
+  $("#ytWhen").value = "now";
+  $("#ytLaterBox").hidden = true;
+  const soon = new Date(Date.now() + 60 * 60 * 1000);
+  soon.setMinutes(0, 0, 0);
+  $("#ytAt").value = new Date(soon.getTime() - soon.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  document.querySelectorAll('input[name="ytKids"]').forEach((r) => (r.checked = false));
+  $("#ytNotify").checked = true;
+  const fromYouTube = /^https?:\/\/([\w-]+\.)?(youtube\.com|youtu\.be)\//i.test(job.url || "");
+  $("#ytLinkRow").hidden = !fromYouTube;
+  $("#ytLink").checked = false;
+  $("#yterr").textContent = "";
+  updateCount();
+  $("#ytdlg").showModal();
+}
+
+function updateCount() { $("#ytCount").textContent = `${$("#ytTitle").value.length}/100`; }
+$("#ytTitle").addEventListener("input", updateCount);
+$("#ytWhen").addEventListener("change", () => {
+  const later = $("#ytWhen").value === "later";
+  $("#ytLaterBox").hidden = !later;
+  // YouTube makes a scheduled video public at the chosen time, so scheduling means Public.
+  if (later) $("#ytPrivacy").value = "public";
+  $("#ytPrivacy").disabled = later;
+});
+$("#ytCancel").addEventListener("click", () => $("#ytdlg").close());
+$("#ytdlg").addEventListener("close", () => { if (returnFocus && document.contains(returnFocus)) returnFocus.focus(); });
+
+$("#ytform").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!posting) return;
+  const kids = document.querySelector('input[name="ytKids"]:checked');
+  if (!kids) { $("#yterr").textContent = "Choose whether the video is made for kids."; return; }
+  let publish_at = null;
+  if ($("#ytWhen").value === "later") {
+    const at = new Date($("#ytAt").value);
+    if (isNaN(at)) { $("#yterr").textContent = "Pick a date and time to publish."; return; }
+    if (at <= new Date()) { $("#yterr").textContent = "The publish time must be in the future."; return; }
+    publish_at = at.toISOString(); // UTC, e.g. 2026-11-16T13:30:00.000Z
+  }
+  const body = {
+    title: $("#ytTitle").value,
+    description: $("#ytDesc").value,
+    hashtags: $("#ytTags").value.split(/[\s,]+/).map((t) => t.replace(/^#+/, "")).filter(Boolean),
+    privacy: $("#ytPrivacy").value,
+    publish_at,
+    made_for_kids: kids.value === "yes",
+    notify_subscribers: $("#ytNotify").checked,
+    add_source_link: !$("#ytLinkRow").hidden && $("#ytLink").checked,
+    clip_video: posting.video, // lets the server refuse if this position now holds another clip
+  };
+  $("#ytSubmit").disabled = true;
+  try {
+    await api(`/api/jobs/${posting.job}/clips/${posting.index}/youtube`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    $("#ytdlg").close();
+    await refresh();
+  } catch (err) {
+    $("#yterr").textContent = err.message;
+  } finally {
+    $("#ytSubmit").disabled = false;
+  }
+});
+
+async function refresh() {
+  try { jobs = await api("/api/jobs"); } catch { return; }
+  render();
+  const active = jobs.some((j) => j.status === "queued" || j.status === "running");
+  const uploading = jobs.some((j) => (j.clips || []).some(ytBusy));
+  clearTimeout(timer);
+  if (active || uploading) timer = setTimeout(refresh, 1500);
+  jobsEl.setAttribute("aria-busy", active ? "true" : "false");
+  $("#go").disabled = active;
+  $("#go").textContent = active ? "Working…" : "Get clips";
+}
+
+const scoreColor = (s) => (s >= 85 ? "var(--good)" : s >= 70 ? "var(--mid)" : "var(--low)");
+// Said in words too, so the score never relies on color alone.
+const scoreWord = (s) => (s >= 85 ? "strong" : s >= 70 ? "good" : "fair");
+
+function clipCard(c, jobId, i) {
+  const tags = (c.hashtags || []).map((h) => "#" + h).join(" ");
+  const copyText = [c.title, c.description, tags].filter(Boolean).join("\n\n");
+  const score = Math.max(0, Math.min(100, Math.round(+c.score || 0)));
+  const aspect = c.aspect || "9:16";
+  const shape = aspect === "16:9" ? "wide" : aspect === "1:1" ? "square" : "tall";
+  const key = `${jobId}:${i}`;
+  return `<li class="clip" data-clip="${esc(key)}">
+    <div class="compact">
+      <span class="okmark" aria-hidden="true">${ICON_CHECK}</span><span class="sr-only okmark-txt">Posted. </span>
+      <span class="rank">#${i + 1}</span>
+      <span class="ctitle">${esc(c.title)}</span>
+      <span class="cstat" data-cstat="${esc(key)}"></span>
+      <button class="iconbtn" type="button" data-expand="${esc(key)}" aria-expanded="false" aria-label="Show clip ${i + 1}">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      <button class="iconbtn" type="button" data-more="${esc(key)}" aria-haspopup="menu" aria-expanded="false" aria-label="More options for clip ${i + 1}">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+    </div>
+    <div class="vid ${shape}" style="aspect-ratio: ${esc(aspect.replace(":", "/"))}">
+      <video src="${esc(c.video)}" poster="${esc(c.thumb)}" controls preload="none" playsinline aria-label="Clip ${i + 1}: ${esc(c.title)}"></video>
+    </div>
+    <div class="info">
+      <div class="meta">
+        <span class="rank">#${i + 1}</span>
+        <span class="pill">${Math.round(c.length)}s</span>
+        <span class="pill">${esc(aspect)}</span>
+        <span class="scorebox" title="Score ${score} out of 100">
+          <span class="meter" aria-hidden="true"><i style="width:${score}%;background:${scoreColor(score)}"></i></span>
+          <b>${score}</b><small>${scoreWord(score)}</small>
+        </span>
+        <button class="iconbtn collapse" type="button" data-expand="${esc(key)}" aria-expanded="true" aria-label="Fold clip ${i + 1} into a single row">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg></button>
+      </div>
+      <h4>${esc(c.title)}</h4>
+      <p class="sr-only">Score ${score} out of 100, ${scoreWord(score)}. ${Math.round(c.length)} seconds.</p>
+      ${c.hook ? `<p class="hookline"><span>Opens with:</span> “${esc(c.hook)}”</p>` : ""}
+      ${c.reason ? `<p class="why"><span>Why it works:</span> ${esc(c.reason)}</p>` : ""}
+      ${tags ? `<div class="tags">${esc(tags)}</div>` : ""}
+      <div class="actions">
+        <a class="dl" href="${esc(c.video)}" download="${esc((c.title || "clip").replace(/[\\/:*?"<>|]+/g, "").slice(0, 60))}.mp4">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 19h16"/></svg>Download<span class="sr-only"> clip ${i + 1}</span></a>
+        <button class="post" type="button" data-post="${esc(jobId)}:${i}">
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="4" fill="#ff3b30"/><path d="M10 9v6l5-3z" fill="#fff"/></svg><span class="post-txt">Post to YouTube</span><span class="sr-only"> (clip ${i + 1})</span></button>
+        <button class="more" type="button" data-more="${esc(jobId)}:${i}" aria-haspopup="menu" aria-expanded="false" aria-label="More options for clip ${i + 1}">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+      </div>
+      <div class="ytstat" data-ytstat="${esc(jobId)}:${i}"></div>
+    </div>
+  </li>`;
+}
+
+// The three stages the server goes through, by the overall percent it reports (see app/main.py).
+const STAGES = [
+  { from: 0, to: 42, title: "Get the video", what: (j) => (j.upload ? "Reading your file and turning speech into text" : "Downloading and turning speech into text") },
+  { from: 42, to: 45, title: "Pick the best moments", what: () => "Reading the transcript and ranking moments by how well they'd hold a viewer" },
+  { from: 45, to: 100, title: "Cut, frame and caption", what: () => "Making each clip vertical and burning in captions" },
+];
+const stageOf = (j) => (j.status === "queued" ? -1 : STAGES.findIndex((s) => j.progress < s.to));
+
+function stageFill(s, p) { return Math.max(0, Math.min(100, ((p - s.from) / (s.to - s.from)) * 100)); }
+
+function jobProgressHtml(j) {
+  const cur = stageOf(j);
+  const pct = Math.round(j.progress);
+  const steps = STAGES.map((s, k) => {
+    const state = k < cur ? "done" : k === cur ? "now" : "todo";
+    return `<li class="stage ${state}" ${state === "now" ? 'aria-current="step"' : ""}>
+      <div class="stage-top"><span class="stage-n" aria-hidden="true">${state === "done" ? ICON_CHECK : k + 1}</span>
+        <span class="stage-t">${s.title}<span class="sr-only">${state === "done" ? " (done)" : state === "now" ? " (in progress)" : " (not started)"}</span></span></div>
+      <div class="stage-bar" aria-hidden="true"><i style="width:${state === "done" ? 100 : state === "now" ? stageFill(s, j.progress) : 0}%"></i></div>
+    </li>`;
+  }).join("");
+  const now = cur >= 0 ? STAGES[cur] : null;
+  return `<div class="prog">
+    <ol class="stages" aria-label="Progress">${steps}</ol>
+    <div class="now-box">
+      <span class="spin" aria-hidden="true"></span>
+      <div class="now-txt"><b class="msg">${esc(j.status === "queued" ? "Waiting to start" : j.message)}</b>
+        <span class="what">${esc(now ? now.what(j) : "Another video is being worked on first")}</span></div>
+      <span class="pct" role="progressbar" aria-label="Overall progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}">${pct}%</span>
+    </div>
+    ${cur === 2 && j.clips.length ? `<div class="ready">${j.clips.length} clip${j.clips.length > 1 ? "s" : ""} ready below. You can watch them while the rest finish.</div>` : ""}
+  </div>`;
+}
+
+// "3 min ago", "yesterday", or a date.
+function ago(sec) {
+  const s = Math.max(0, Date.now() / 1000 - sec);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  if (s < 172800) return "yesterday";
+  return new Date(sec * 1000).toLocaleDateString();
+}
+
+const postedCount = (j) => (j.clips || []).filter((c) => ytState(c) === "done").length;
+
+// Which videos are open. Untouched ones: the newest and anything still working are open, older ones folded.
+const jobOpen = new Map();
+const isJobOpen = (j, idx) => (jobOpen.has(j.id) ? jobOpen.get(j.id) : idx === 0 || j.status === "queued" || j.status === "running" || j.status === "error");
+
+const ICON_YT = `<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="4" fill="#ff3b30"/><path d="M10 9v6l5-3z" fill="#fff"/></svg>`;
+const ICON_FILE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>`;
+const ICON_SPARK = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-1.7z"/></svg>`;
+
+function jobBlock(j, idx) {
+  const busy = j.status === "queued" || j.status === "running";
+  const name = j.title || j.upload || j.url;
+  const open = isJobOpen(j, idx);
+  const n = j.clips.length;
+  const best = n ? Math.max(...j.clips.map((c) => Math.round(+c.score || 0))) : 0;
+  const picked = j.selection === "ollama" ? "Local AI picks" : j.selection === "claude" || j.selection === "gemini" ? "AI picks" : j.selection === "basic" ? "Basic scoring" : "";
+  const thumb = n ? `<img class="job-thumb" src="${esc(j.clips[0].thumb)}" alt="" loading="lazy">`
+    : `<span class="job-thumb ph" aria-hidden="true">${busy ? '<span class="spin"></span>' : ICON_FILE}</span>`;
+  const status = busy ? `<span class="badge run">${j.status === "queued" ? "Waiting" : "Working"}</span>`
+    : j.status === "error" ? `<span class="badge bad">Failed</span>` : "";
+  const chips = [
+    `<span class="chip">${j.upload ? ICON_FILE + "Your file" : ICON_YT + "YouTube"}</span>`,
+    j.created ? `<span class="chip">${ago(j.created)}</span>` : "",
+    picked ? `<span class="chip">${ICON_SPARK}${picked}</span>` : "",
+    j.transcript_source === "whisper" ? `<span class="chip">Transcribed from audio</span>` : "",
+  ].join("");
+  const stats = n ? `<dl class="stats">
+      <div><dt>Clips</dt><dd>${n}</dd></div>
+      <div><dt>Posted</dt><dd data-posted="${esc(j.id)}">${postedCount(j)}</dd></div>
+      <div><dt>Best score</dt><dd style="color:${scoreColor(best)}">${best}</dd></div>
+    </dl>` : "";
+  return `<section class="job${open ? "" : " closed"}" data-job="${esc(j.id)}" aria-labelledby="jt-${esc(j.id)}">
+    <div class="jobhead">
+      ${thumb}
+      <div class="job-main">
+        <h3 id="jt-${esc(j.id)}">${esc(name)} ${status}</h3>
+        <div class="chips">${chips}</div>
+      </div>
+      ${stats}
+      <div class="job-actions">
+        ${!busy && j.status === "done" && n ? `<a class="ghost" href="/api/jobs/${esc(j.id)}/zip" download>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 19h16"/></svg>Download all<span class="sr-only"> clips of ${esc(name)}</span></a>` : ""}
+        ${busy ? "" : `<button class="iconbtn danger" type="button" data-del="${esc(j.id)}" aria-label="Remove ${esc(name)} and its clips" title="Remove video">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>`}
+        <button class="iconbtn job-toggle" type="button" data-jobtoggle="${esc(j.id)}" aria-expanded="${open}" aria-controls="jb-${esc(j.id)}" aria-label="${open ? "Hide" : "Show"} clips of ${esc(name)}">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      </div>
+    </div>
+    <div class="job-body" id="jb-${esc(j.id)}">
+      ${busy ? jobProgressHtml(j) : ""}
+      ${j.status === "error" ? `<div class="note err" role="alert">${esc(j.error)}</div>` : ""}
+      ${j.warning ? `<div class="note">${esc(j.warning)}</div>` : ""}
+      ${n ? `<ul class="grid">${j.clips.map((c, i) => clipCard(c, j.id, i)).join("")}</ul>` : ""}
+    </div>
+  </section>`;
+}
+
+function toggleJob(id) {
+  const sec = jobsEl.querySelector(`[data-job="${id}"]`);
+  if (!sec) return;
+  const open = sec.classList.toggle("closed") === false;
+  jobOpen.set(id, open);
+  const btn = sec.querySelector("[data-jobtoggle]");
+  btn.setAttribute("aria-expanded", String(open));
+  btn.setAttribute("aria-label", btn.getAttribute("aria-label").replace(/^(Hide|Show)/, open ? "Hide" : "Show"));
+  if (!open) sec.querySelectorAll("video").forEach((v) => v.pause());
+}
+
+const announceStage = {};
+
+// Tell screen readers when a video finishes or fails. Those changes rebuild the list,
+// so the step announcements in render() don't cover them. Statuses seen on first load
+// are only recorded, not announced.
+const lastStatus = {};
+function announceFinished() {
+  for (const j of jobs) {
+    const before = lastStatus[j.id];
+    lastStatus[j.id] = j.status;
+    if (before === undefined || before === j.status) continue;
+    const name = j.title || j.upload || "your video";
+    if (j.status === "done") {
+      const n = j.clips.length;
+      announce(`Finished: ${n} clip${n === 1 ? "" : "s"} ready from ${name}.`);
+    } else if (j.status === "error") {
+      announce(`Couldn't make clips from ${name}. ${j.error || ""}`);
+    }
+  }
+}
+
+function render() {
+  // Don't rebuild a finished job's cards on every poll: it would restart any video that's playing.
+  const sig = JSON.stringify(jobs.map((j) => [j.id, j.status, j.progress, j.message, j.clips.length, j.warning]));
+  updateYouTubeStatus(); // upload progress updates in place, without restarting playing videos
+  if (sig === render.last) return;
+  const structural = JSON.stringify(jobs.map((j) => [j.id, j.status, j.clips.length, j.warning]));
+  if (structural === render.lastStructural) {
+    for (const j of jobs) {
+      const sec = jobsEl.querySelector(`[data-job="${j.id}"]`);
+      if (!sec) continue;
+      const prog = sec.querySelector(".prog");
+      // Progress has no videos in it, so rebuilding it is safe and keeps the stages in sync.
+      if (prog) prog.outerHTML = jobProgressHtml(j);
+      const cur = stageOf(j);
+      if (cur !== announceStage[j.id] && cur >= 0) announce(`Step ${cur + 1} of 3: ${STAGES[cur].title}.`);
+      announceStage[j.id] = cur;
+    }
+  } else {
+    closeMenu(false); // its button is about to be replaced
+    jobsEl.innerHTML = jobs.length
+      ? `<div class="jobs-head"><h2>Your videos</h2><span>${jobs.length} video${jobs.length > 1 ? "s" : ""} · ${jobs.reduce((a, j) => a + j.clips.length, 0)} clips</span></div>`
+        + jobs.map((j, k) => jobBlock(j, k)).join("")
+      : `<div class="empty"><strong>No clips yet</strong>Paste a link above and your clips will show up here, best first.</div>`;
+    updateYouTubeStatus();
+  }
+  render.last = sig;
+  render.lastStructural = structural;
+  announceFinished();
+}
+
+// "1:05", "12:30" or "1:02:03" to seconds; empty means no limit (null).
+function parseClock(text, name) {
+  const t = text.trim();
+  if (!t) return null;
+  const m = t.match(/^(?:(\d+):)?(\d{1,3}):(\d{1,2})$/);
+  if (!m || +m[3] >= 60 || (m[1] !== undefined && +m[2] >= 60)) {
+    throw new Error(`"${name}" should look like 12:30 or 1:02:03.`);
+  }
+  return (+(m[1] || 0)) * 3600 + (+m[2]) * 60 + (+m[3]);
+}
+
+// Show the error and put the cursor in the field that caused it.
+function formError(msg, field) {
+  $("#formerr").textContent = msg;
+  if (field) { field.setAttribute("aria-invalid", "true"); field.focus(); }
+}
+for (const id of ["url", "from", "to"]) $("#" + id).addEventListener("input", (e) => e.target.removeAttribute("aria-invalid"));
+
+$("#form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("#formerr").textContent = "";
+  const [min_len, max_len] = radio("len").split("-").map(Number);
+  const file = $("#file").files[0];
+  let start_time, end_time;
+  try { start_time = parseClock($("#from").value, "From"); } catch (err) { return formError(err.message, $("#from")); }
+  try { end_time = parseClock($("#to").value, "To"); } catch (err) { return formError(err.message, $("#to")); }
+  if (!file && !$("#url").value.trim()) return formError("Paste a YouTube link or choose a video file.", $("#url"));
+  if (!file && !$("#url").checkValidity()) return formError("That doesn't look like a link. It should start with https://", $("#url"));
+  try {
+    if (file) {
+      const fd = new FormData();
+      fd.append("file", file);
+      for (const [k, v] of Object.entries({
+        clip_count: radio("count"), min_len, max_len,
+        style: radio("style"), layout: $("#layout").value, aspect: radio("aspect"), hook: $("#hook").checked, trim_pauses: $("#trim").checked,
+        prompt: $("#prompt").value.trim(), start_time, end_time,
+      })) if (v !== null && v !== undefined) fd.append(k, v);
+      $("#go").disabled = true;
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/jobs/upload");
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable) $("#go").textContent = `Uploading ${Math.round(100 * ev.loaded / ev.total)}%`;
+        };
+        xhr.onload = () => {
+          let data = {}; try { data = JSON.parse(xhr.responseText); } catch {}
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+          else reject(new Error(typeof data.detail === "string" ? data.detail : `Upload failed (${xhr.status})`));
+        };
+        xhr.onerror = () => reject(new Error("Upload failed. Is the app still running?"));
+        xhr.send(fd);
+      }).finally(() => { $("#go").disabled = false; $("#go").textContent = "Get clips"; });
+      clearFile();
+      await refresh();
+      return;
+    }
+    await api("/api/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: $("#url").value.trim(), clip_count: +radio("count"), min_len, max_len,
+        style: radio("style"), layout: $("#layout").value, aspect: radio("aspect"), hook: $("#hook").checked, trim_pauses: $("#trim").checked,
+        prompt: $("#prompt").value.trim(), start_time, end_time,
+      }),
+    });
+    $("#url").value = "";
+    await refresh();
+  } catch (err) { formError(err.message); }
+});
+
+// File picker: show the chosen file's name, and let it be removed.
+const DROP_DEFAULT = $("#droptext").innerHTML;
+function showFile() {
+  const f = $("#file").files[0];
+  $("#url").required = !f;
+  $("#clearfile").hidden = !f;
+  $("#droptext").innerHTML = f
+    ? `<b>${esc(f.name)}</b><span>${(f.size / 1048576).toFixed(1)} MB · ready, press Get clips</span>`
+    : DROP_DEFAULT;
+}
+function clearFile() { $("#file").value = ""; showFile(); }
+$("#file").addEventListener("change", showFile);
+$("#clearfile").addEventListener("click", () => { clearFile(); $("#file").focus(); });
+for (const ev of ["dragenter", "dragover"]) $("#file").addEventListener(ev, () => $("#drop").classList.add("over"));
+for (const ev of ["dragleave", "drop"]) $("#file").addEventListener(ev, () => $("#drop").classList.remove("over"));
+
+// ---------- Toast: short confirmation at the bottom of the screen ----------
+function toast(msg) {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => (el.hidden = true), 3000);
+  announce(msg);
+}
+
+// ---------- ⋯ menu for each clip ----------
+// One shared menu, filled for whichever clip opened it. Arrow keys move, Esc closes and
+// returns focus to the ⋯ button, Tab or a click outside closes it.
+const menu = { el: null, btn: null, job: null, index: null };
+const MI = {
+  copy: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`,
+  yt: `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="4" fill="#ff3b30"/><path d="M10 9v6l5-3z" fill="#fff"/></svg>`,
+  open: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>`,
+  del: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>`,
+};
+
+function openMenu(btn, jobId, index) {
+  closeMenu(false);
+  const job = jobs.find((j) => j.id === jobId);
+  const c = job && job.clips[index];
+  if (!c) return;
+  const st = ytState(c);
+  const busy = st === "queued" || st === "uploading";
+  const items = [
+    `<button role="menuitem" type="button" data-act="copy">${MI.copy}Copy title, description and hashtags</button>`,
+    st === "done" && c.youtube.url ? `<button role="menuitem" type="button" data-act="open">${MI.open}Open on YouTube</button>` : "",
+    `<button role="menuitem" type="button" data-act="post" ${busy ? 'aria-disabled="true"' : ""}>${MI.yt}${st === "done" ? "Post to YouTube again" : busy ? "Uploading to YouTube…" : "Post to YouTube"}</button>`,
+    `<div class="menu-sep" role="separator"></div>`,
+    `<button role="menuitem" type="button" data-act="delete" class="danger" ${busy ? 'aria-disabled="true"' : ""}>${MI.del}Delete this clip</button>`,
+  ].join("");
+  const el = document.createElement("div");
+  el.className = "menu";
+  el.setAttribute("role", "menu");
+  el.setAttribute("aria-label", `Options for clip ${index + 1}`);
+  el.innerHTML = items;
+  document.body.appendChild(el);
+  Object.assign(menu, { el, btn, job: jobId, index });
+  btn.setAttribute("aria-expanded", "true");
+  placeMenu();
+  el.querySelector("[role=menuitem]").focus();
+  el.addEventListener("keydown", menuKeys);
+  el.addEventListener("click", menuClick);
+}
+
+function placeMenu() {
+  if (!menu.el) return;
+  const r = menu.btn.getBoundingClientRect(), m = menu.el.getBoundingClientRect();
+  const below = r.bottom + 6 + m.height < innerHeight;
+  const top = below ? r.bottom + 6 : r.top - 6 - m.height;
+  const left = Math.min(Math.max(8, r.right - m.width), innerWidth - m.width - 8);
+  menu.el.style.top = `${Math.max(8, top) + scrollY}px`;
+  menu.el.style.left = `${left + scrollX}px`;
+}
+
+function closeMenu(focusBack) {
+  if (!menu.el) return;
+  menu.el.remove();
+  menu.btn.setAttribute("aria-expanded", "false");
+  if (focusBack && document.contains(menu.btn)) menu.btn.focus();
+  Object.assign(menu, { el: null, btn: null, job: null, index: null });
+}
+
+function menuKeys(e) {
+  const items = [...menu.el.querySelectorAll("[role=menuitem]")];
+  const k = items.indexOf(document.activeElement);
+  if (e.key === "ArrowDown") { e.preventDefault(); items[(k + 1) % items.length].focus(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); items[(k - 1 + items.length) % items.length].focus(); }
+  else if (e.key === "Home") { e.preventDefault(); items[0].focus(); }
+  else if (e.key === "End") { e.preventDefault(); items[items.length - 1].focus(); }
+  else if (e.key === "Escape") { e.preventDefault(); closeMenu(true); }
+  else if (e.key === "Tab") { closeMenu(false); }
+}
+
+async function menuClick(e) {
+  const item = e.target.closest("[data-act]");
+  if (!item || item.getAttribute("aria-disabled") === "true") return;
+  const { job: jobId, index } = menu;
+  const job = jobs.find((j) => j.id === jobId);
+  const c = job && job.clips[index];
+  const act = item.dataset.act;
+  closeMenu(true);
+  if (!c) return;
+  if (act === "copy") {
+    const tags = (c.hashtags || []).map((h) => "#" + h).join(" ");
+    try {
+      await navigator.clipboard.writeText([c.title, c.description, tags].filter(Boolean).join("\n\n"));
+      toast("Copied the title, description and hashtags.");
+    } catch { toast("Couldn't copy. Your browser blocked the clipboard."); }
+  } else if (act === "open") {
+    window.open(c.youtube.url, "_blank", "noopener");
+  } else if (act === "post") {
+    openPost(jobId, index);
+  } else if (act === "delete") {
+    if (!confirm(`Delete clip ${index + 1}, "${c.title}"? This removes the video file and can't be undone.`)) return;
+    try {
+      await api(`/api/jobs/${jobId}/clips/${index}`, { method: "DELETE" });
+      // Clip positions shift after a delete, so forget per-clip state for this video.
+      for (const s of [trayKeys, foldPref]) for (const k of [...s.keys()]) if (k.startsWith(jobId + ":")) s.delete(k);
+      render.last = render.lastStructural = null; // positions shifted: rebuild the list
+      await refresh();
+      toast(`Deleted clip ${index + 1}.`);
+    } catch (err) { toast(err.message); }
+  }
+}
+
+document.addEventListener("click", (e) => {
+  if (menu.el && !menu.el.contains(e.target) && !menu.btn.contains(e.target)) closeMenu(false);
+});
+addEventListener("resize", () => closeMenu(false));
+
+jobsEl.addEventListener("click", async (e) => {
+  const post = e.target.closest("[data-post]");
+  if (post) {
+    const [jobId, i] = post.dataset.post.split(":");
+    openPost(jobId, +i);
+    return;
+  }
+  const jt = e.target.closest("[data-jobtoggle]");
+  if (jt) { toggleJob(jt.dataset.jobtoggle); return; }
+  const exp = e.target.closest("[data-expand]");
+  if (exp) { toggleFold(exp.dataset.expand); return; }
+  const more = e.target.closest("[data-more]");
+  if (more) {
+    const [jobId, i] = more.dataset.more.split(":");
+    menu.btn === more ? closeMenu(true) : openMenu(more, jobId, +i);
+    return;
+  }
+  const del = e.target.closest("[data-del]");
+  if (del && confirm("Remove this video and delete its clips?")) {
+    await api(`/api/jobs/${del.dataset.del}`, { method: "DELETE" }).catch((err) => alert(err.message));
+    await refresh();
+  }
+});
+
+init();
+</script>
+</body>
+</html>

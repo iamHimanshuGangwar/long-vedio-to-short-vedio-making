@@ -1,0 +1,20 @@
+# AI code review by Octopus (https://octopus-review.ai).
+# Free community tier for public repos: no API key, up to 5 reviews per repo per day.
+name: Octopus review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    # Fork PRs get a read-only token, so the review couldn't be posted anyway.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to an exact commit (v1): this step holds a write token.
+      - uses: octopusreview/action@c7156c0dc465c20e8b06da84b92b64f9ae8c7c36 # v1

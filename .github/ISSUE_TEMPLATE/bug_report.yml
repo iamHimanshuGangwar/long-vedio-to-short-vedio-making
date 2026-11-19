@@ -1,0 +1,46 @@
+name: Bug report
+description: Something broke or gave a wrong result
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error message
+      description: The red text on the page and/or the last lines from the terminal window.
+      render: text
+  - type: input
+    id: video
+    attributes:
+      label: Video length and type
+      placeholder: "e.g. 25 min podcast, 2 speakers"
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: dropdown
+    id: ai
+    attributes:
+      label: AI provider
+      options: ["Ollama (local)", Gemini, Claude, "None (basic scoring)"]
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      placeholder: "e.g. qwen3.5:4b"
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware
+      placeholder: "CPU, RAM, GPU if any"
